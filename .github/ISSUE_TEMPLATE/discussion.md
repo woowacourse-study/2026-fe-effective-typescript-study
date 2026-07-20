@@ -1,8 +1,8 @@
 ---
-name: 토론
+name: 토론 주제
 about: 함께 의견을 나누고 싶은 주제를 제안합니다
 title: '[토론] '
-labels: discussion
+labels: ''
 assignees: ''
 ---
 
