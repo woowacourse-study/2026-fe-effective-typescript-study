@@ -62,3 +62,122 @@ const c: EventName = 'click'; // 오류
 
 ### 타입 계층도
 <img width="780" height="270" alt="image" src="https://github.com/user-attachments/assets/c0aa6478-fba0-42c0-b262-ff2b824c95d8" />
+
+
+## 아이템 8
+
+### `symbol` 타입
+
+- **절대로 다른 값과 우연히 같아지지 않는 고유한 값**을 만들기 위한 자바스크립트의 원시 타입
+- 주로 객체의 안전한 프로퍼티 키를 만들 때 사용
+
+``` ts
+const a = Symbol();
+const b = Symbol();
+
+console.log(a === b); // false
+```
+
+### `unique symbol` 타입
+
+- 특정 심벌 하나만 나타내는 타입
+
+``` ts
+const ID: unique symbol = Symbol('id');
+```
+
+타입스크립트의 심벌은 **타입 공간** 또는 **값 공간**에 존재한다.
+- 타입 선언(:) 또는 단언문(as) 다음에 나오는 심벌은 타입
+- (=) 다음에 나오는 것은 값
+
+class와 enum은 타입과 값 두 가지 모두 가능하다.
+
+`enum`
+- TypeScript 문법
+- 관련 있는 여러 상수 값을 하나의 이름 아래 묶어 관리하는 기능
+
+타입의 속성을 얻을 때에는 반드시 `obj['field']`를 사용해야 한다.
+
+``` ts
+interface Person{
+	name: string;
+	age: number;
+}
+
+const pName: Person.name = '1'; // 오류
+```
+
+### 다형성 this
+
+- 클래스나 인터페이스 안에서 `this`를 타입으로 쓰면, **현재 클래스 자체로 고정되지 않고 실제로 호출한 하위 클래스의 타입을 가리키는 기능**
+
+``` ts
+class Builder {
+  setName(name: string): this {
+    return this;
+  }
+}
+
+class UserBuilder extends Builder {
+  setAge(age: number): this {
+    return this;
+  }
+}
+
+const builder = new UserBuilder();
+
+builder
+  .setName('이름')
+  .setAge(20);
+```
+
+- `Builder의` 하위 클래스인 `UserBuilder` 인스턴스에서 호출하면 `setName`의 반환 타입인 `this`는 `UserBuilder`로 해석된다.
+- 따라서 `setName을` 호출한 뒤에도 `setAge`를 이어서 호출할 수 있다.
+
+### 구조 분해 할당에서 `:`는 이름 바꾸기로 해석된다.
+
+``` ts
+function email({ to: Person, subject, body }) {
+  // ...
+}
+```
+
+`to`의 타입을 `Person`으로 지정한다는 의도가 담겨있지만, 실제로 그렇지 동작하지 않는다.
+
+`{ to: Person}`은 객체의 `to`프로퍼티 값을 `Person`이라는 지역 변수에 저장한다.
+
+``` js
+function email(arg) {
+  const Person = arg.to;
+}
+```
+
+이 코드와 같은 의미이다.
+
+## 아이템 9
+
+### 타입 단언 대신 타입 선언을 사용하자
+
+- 타입 선언은 그 값이 선언된 타입임을 명시한다.
+- 타입 단언은 TS가 추론한 타입이 있더라도 해당 타입으로 간주한다.
+- 타입 단언은 사실상 타입 체커에게 오류를 무시하라고 하는 것이다.
+	- 타입 단언은 타입 오류를 없앨 뿐, 런타임 오류가 발생할 수 있다.
+
+타입 스크립트는 DOM에 접근할 수 없기 때문에 `HTMLElement`와 같은 경우에는 타입 단언이 필요하다.
+
+## 아이템 10
+
+### 기본형을 객체로 래핑한다.
+
+- `string` 기본형에는 메서드가 없지만, 자바스크립트는 메서드를 가지는 `String` 객체가 존재한다.
+- 내장 메서드를 사용할 때, 기본형을 객체로 래핑하고, 메서드를 호출하고, 래핑한 객체를 버린다.
+
+``` js
+x = "hello"
+x.language = 'English'
+x.language // 오류
+```
+
+객체로 변환된다는 말만 보면 해당 코드는 정상 동작할 것 같지만, 실제로는 오류가 발생한다.
+
+-> 메서드를 호출하고 객체를 버리기 때문이다.
