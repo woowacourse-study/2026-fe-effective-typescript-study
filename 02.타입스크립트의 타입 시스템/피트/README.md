@@ -63,3 +63,106 @@ background-color:: yellow
 ### 이번 기록에서 남길 한 줄
 
 타입을 값의 집합으로 바라보니 구조적 타이핑, 인터섹션, `extends`, `unknown`이 서로 다른 규칙이 아니라 할당 가능성과 집합의 포함 관계를 설명하는 하나의 관점으로 연결됐다.
+
+## 아이템 8~10
+
+### 아이템8: 타입 공간과 값 공간의 심벌 구분하기
+
+클래스가 타입으로 쓰일 때는 형태(속성과 메서드)로 사용된다는 건 알겠는데, 값으로 쓰일 때는 생성자가 사용된다는 말이 무슨 말이지?
+`typeof` 연산자는 뒤가 타입인지, 값인지에 따라서 다르게 동작하는구나
+`typeof`, `[](속성 접근자)` -> 타입 연산자와 타입 간의 매핑이 이해가 잘 안된다.
+
+> 핵심: TS에서는 타입인지 값인지 구분을 잘 해야 한다.
+
+### 아이템9: 타입 단언 대신 타입 선언 사용하기
+
+타입 선언 > 타입 단언
+그렇지만 타입 단언이 **반드시** 필요한 경우도 있네?
+DOM을 조작하는 경우: TS는 DOM에 접근할 수 없구나!
+문맥상 null이 될 가능성이 없다는 걸 안다면, 단언으로 null을 제외할 수 있음
+null일 가능성이 있다면 옵셔널 체이닝(?) 사용을 편리하다.
+(!)연산자와 비슷해 보이지만 다른 의미를 가진다.
+옵셔널 체이닝 연산자는 **JS의 문법**이다!
+단언이 만능은 아니다. 서로의 서브타입이 아닌 경우는 변환이 불가능하다.
+이걸 해결하려면 unknown 사용, but 매우 찝찝.. 코드 위험...
+`as const`: 타.입 단언이라기 보다는 타입을 더 구체적이고 안전하게 만드는 구문
+어떨 때 사용하더라? -> 상수라고 주장하는 것
+
+1. 단순히 리터럴을 사용하고 싶을 때
+2. 객체를 읽기 전용으로 만들 때
+3. 배열을 읽기 전용의 튜플로 만들 때
+   타입을 명시하지 않는 경우
+
+```ts
+function createColourVariant(colour: Colour, variant: Variant) {
+  return `${variant}-${colour}`;
+}
+```
+
+TS는 반환값을 `string`으로 추론한다.
+타입을 명시한 경우
+
+```ts
+type ColourVariant = `${Variant}-${Colour}`;
+// "light-red" | "light-green" | "light-blue" | "dark-red" | ...
+
+function createColourVariant(colour: Colour, variant: Variant): ColourVariant {
+  return `${variant}-${colour}`;
+}
+```
+
+`ColourVariant`라는 새 타입을 미리 정의해서, "가능한 조합 6개 중 하나"라고 명시적으로 알려줘요.
+장점: 이 타입을 다른 곳에서도 재사용할 수 있음.
+단점: 타입을 하나 더 만들어야 해서 코드가 늘어남.
+`as const`로 단언한 경우
+
+```ts
+function createColourVariant(colour: Colour, variant: Variant) {
+  return `${variant}-${colour}` as const;
+}
+```
+
+`as const`는 "이 값을 넓은 `string`이 아니라, 가능한 한 가장 좁고 정확한 타입으로 취급해줘"라는 의미를 가진다.
+그러면 TypeScript가 별도의 `type ColourVariant` 없이도 자동으로 `"light-red" | "light-green" | ... ` 같은 정확한 타입을 추론한다.
+어떻게 이게 가능한 걸까?
+템플릿 리터럴 타입 안에 유니온 타입이 존재하면, TypeScript는 가능한 모든 조합을 자동으로 곱해서 새로운 유니온 타입을 만든다.
+이건 TS의 템플릿 리터럴 타입 시스템의 기능이다. (일반 JS 문자열 템플릿과 달리, 타입 레벨에서 조합을 계산해줌)
+
+### 아이템10: 객체 래퍼 타입 피하기
+
+우리가 기본형에 대해 사용하던 그 타입들(`String`, `Number`, ...)이 맞다.
+기본형을 각자의 객체로 래핑해서 래퍼 타입이라고 하는구나!
+JS의 프로토타입과 관련이 있을까?
+기본형 타입은 객체 래퍼에 할당할 수 있다. 기본형 타입을 객체 래퍼에 할당하는 선언을 허용한다. <- 이 말이 어렵다. 쉽게 설명하면 뭘까?
+기본형 타입을 객체 래퍼에 할당한다는 의미:
+
+```ts
+// 문제 없는 코드!
+
+let str: string = 'hello';
+let strObj: String = str;
+```
+
+반대로 객체 래퍼를 기본형에 할당한다는 의미:
+
+```ts
+// 오류!
+
+let strObj: String = new String('hello');
+let str: string = strObj;
+```
+
+왜 헷갈리기 쉽다는 말을 할까?
+
+```ts
+function greet(name: String) {
+  // 실수로 대문자로 씀
+  console.log(`Hello, ${name}`);
+}
+
+greet('Alice'); // 동작하긴 하는데..
+```
+
+()기본형 타입 -> 객체 래퍼) 할당이 가능하므로 대문자 `String`을 타입으로 써도 문법적으로 에러 X
+근데 `String` 객체는 `.length`, `.toUpperCase()` 같은 메서드는 있어도, 원시값처럼 `===` 비교가 제대로 안 되거나 예상치 못한 동작을 할 수 있다.
+결론은 그냥 소문자 써라.
