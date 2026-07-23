@@ -204,3 +204,95 @@ string - String
 number - Number 등
 
 **객체 래퍼 타입을 쓰지말고 기본형 타입을 쓰자.**
+
+## 아이템 11 타입 체크와 잉여 속성 체크 구분해서 사용하기
+
+타입이 명시된 변수에 객체 리터럴을 할당할 때 TS는 해당 타입의 속성이 있는지, 그리고 그 외의 속성은 없는지 확인함
+-> 이게 잉여 속성 체크임
+
+```ts
+interface Room {
+  numDoors: number;
+  ceilingHeightFt: number;
+}
+const r: Room = {
+  numDoors: 1,
+  ceilingHeightFt: 10,
+  elephant: "present",
+  // ~~~~~~~ Object literal may only specify known properties,
+  //         and 'elephant' does not exist in type 'Room'
+};
+```
+
+```ts
+const obj = {
+  numDoors: 1,
+  ceilingHeightFt: 10,
+  elephant: "present",
+};
+const r: Room = obj; // OK
+```
+
+여기서 2번째 케이스에만 에러가 뜨지 않음. 첫 번째 코드에서만 잉여속성체크가 발생했음
+
+```ts
+interface Options {
+  title: string;
+  darkMode?: boolean;
+}
+function createWindow(options: Options) {
+  if (options.darkMode) {
+    setDarkMode();
+  }
+  // ...
+}
+createWindow({
+  title: "Spider Solitaire",
+  darkmode: true,
+  // ~~~~~~~ Object literal may only specify known properties,
+  //         but 'darkmode' does not exist in type 'Options'.
+  //         Did you mean to write 'darkMode'?
+});
+```
+
+이 코드는 런타임 에러가 없음. 하지만 개발자가 의도한대로 코드가 작동하지 않음. 오타를 내었기 때문임
+구조적 타이핑에 의해서 에러가 발생하지 않기때문에 오히려 개발자가 더 헷갈리는 상황이 오게됨.
+
+잉여속성체크가 적용되는 곳
+
+1. 선언된 타입으로 변수를 직접 할당할 때
+2. 함수의 매개변수 안에서
+3. 함수의 반환값에서
+
+객체 리터럴(중괄호를 이용해 객체를 직접 선언)이 아니면 잉여 속성 체크가 동작하지 않음
+
+---
+
+약한타입(모든 속성이 optional인 객체 타입)도 비슷하게 동작하는 구석이 있음
+
+약한타입에 값을 할당할 때는 값이 가진 속성 중 최소 1개는 타입에 정의된 속성과 일치해야함.
+이유는 약한타입은 구조적 타이핑 관점에서 그 어떤 타입이 들어와도 다 허용되는 타입임.
+그래서 뭘 넣든 에러가 나지 않음 이건 개발자 관점에서 혼란을 야기할 수 있기 때문에
+TS가 방어선을 구축해주는 느낌임
+
+그럼 **잉여 속성 체크**와 다른점이 무엇이냐?
+잉여 속성 체크는 객체 리터럴에만 적용이 되지만, 약한 타입에 적용되는 규칙은 할당방식에 제한이 없음. 리터럴인지 변수인지 상관없다는 뜻
+
+---
+
+잉여 속석 체크는 선택적 필드를 포함하는 Options같은 타입에 특히 유용하다
+다만, 객체 리터럴에만 적용되고 적용 스코프도 매우 제한적이다.
+
+일반적인 타입 체크 (구조적 타이핑): 필요한 조건만 최소한으로 있으면 나머지는 있어도 상관 없음
+잉여 속성 체크 (객체 리터럴): 정의한 타입과 정확히 일치해야함
+
+잉여 속성 체크는 개발자의 의도와 다르게 동작하는 것을 막아주기 위한 장치같은 것이다!
+
+## 아이템 12 함수 표현식에 타입 적용하기
+
+function 키워드를 쓰는 함수 문장과 const 변수에 함수를 담는 함수 표현식은 다르다.
+그리고 TS에서는 함수 표현식을 사용하는게 좋다 -> 함수의 매개변수부터 반환값까지 전체를 함수 타입으로 선언해 표현식에 재사용할 수 있다는 장점이 있다.
+
+공통 콜백 함수를 위한 타입 선언을 제공하는 것이 좋다 -> 라이브러리 만든다면
+
+결론은 TS에서는 함수 표현식을 사용하자 다른 라이브러리에서 미리 정의된 함수 타입을 가져와서 쓸 때도 인자나 반환값들을 TS에게 자동추론 하도록 맡길 수 있다.
