@@ -217,3 +217,111 @@ const str4: String = str3; // string은 String에 할당 가능
 
 JS 자체에서도 `new String(...)` 같은 래퍼 생성은 지양함.
 타입 표기 역시 항상 소문자 원시 타입(`string`, `number`, `boolean`)을 쓰는 것이 맞음.
+
+---
+
+### 아이템 11. 타입 체크와 잉여 속성 체크 구분해서 사용하기
+
+객체 리터럴을 변수에 할당하거나 함수에 매개변수로 전달할 때 잉여 속성 체크가 수행된다.
+잉여 속성 체크는 원래 구조적 타입 시스템을 보완하기 위한 추가검사이다. 그래서
+
+```
+interface User {
+name: string;
+}
+
+const obj = {
+name: "해니",
+hobby: "축구",
+};
+
+const user: User = obj;
+```
+
+의 경우, User가 요구하는 name이 있네? 그럼 User처럼 사용할 수 있겠네라고 생각한다.
+
+```
+interface User {
+name: string;
+}
+
+const user: User = {
+nmae: "해니", // 오타
+};
+```
+
+근데 이렇게 오타를 하면 오류를 못잡는다.
+구조적 타입만 사용했다면 "nmae"가 그냥 추가 속성으로 취급될 수도 있어서 실수를 발견하기 어렵다.
+그래서 ts가 객체 리터럴을 직접 넣는 경우에는 추가 속성이 있는지 한 번 더 검사하자! 라는 규칙을 만들었고, 그게 잉여 속성 체크이다.
+
+잉여 속성 체크는 오류를 찾는 효과적인 방법이다. -> 그치만 타입스크립트 타입 체커가 수행하는 일반적인 구조적 할당 가능성 체크와 역할이 다르다.
+
+```
+const obj = {
+name: "해니",
+hobby: "축구",
+};
+
+const user: User = obj;
+```
+
+근데 이미 여기서 obj는 하나의 독립적인 객체 타입으로 추론 되었는데, ts는 이 객체를 다른 타입으로 사용할 수 있는지만 확인한다.
+
+그러니까 user가 필요한 속성은 가지고 있는지 확인하지만, 그 외의 타입을 검사하지 않는다. 왜냐하면 다른 곳에서도 사용할 수 있는 일반 객체일 수 있기 때문이다.
+
+잉여 속성 체크에는 한계가 있다. 임시 변수를 도입하면 잉여 속성 체크를 건너뛸 수 있다.
+
+**핵심** : TypeScript는 구조적 타입 시스템을 사용하기 때문에 원래는 추가 속성이 있어도 허용함. 하지만 객체 리터럴을 직접 할당하는 경우에는 오타나 실수를 방지하기 위해 잉여 속성 체크를 추가로 수행함. 변수에 저장된 객체는 일반적인 구조적 타입 검사만 수행하므로 잉여 속성 체크는 적용되지 않음.
+
+### 아이템 12. 함수 표현식에 타입 적용하기
+
+타입 스크립트에서는 함수 표현식을 사용하는 것이 좋다.
+
+```ts
+function rollDice1(sides: number): number {} // 문장
+const rollDice2 = function (sides: number): number {}; // 표현식
+const rollDice3 = (sides: number): number => {}; // 표현식
+```
+
+함수의 매개변수부터 반환값까지 전체를 함수 타입으로 선언하여 함수 표현식에 재사용할 수 있는 장점이 있다.
+
+```ts
+type DiceRollFn = (sides: number) => number;
+const rollDice: DiceRollFn = (sides) => {
+  return 0;
+};
+```
+
+반복되는 함수를 하나의 타입으로 통합할 수 있다.
+
+```ts
+type BinaryFn = (a: number, b: number) => number;
+const add: BinaryFn = (a, b) => a + b;
+const sub: BinaryFn = (a, b) => a - b;
+const mul: BinaryFn = (a, b) => a * b;
+const div: BinaryFn = (a, b) => a / b;
+```
+
+함수의 매개변수에 타입을 선언하는 것보다 함수 표현식 전체 타입을 정의하는 것이 코드도 간결하고 안전하다.
+
+```ts
+// Bad
+async function checkedFetch(input: RequestInfo, init?: RequestInit) {
+  const response = await fetch(input, init);
+  if (!response.ok) {
+    throw new Error("Request failed: " + response.status); //return으로 바뀌어도 오류를 잡아내지 못한다.
+  }
+  return response;
+}
+
+// Good
+const checkedFetch: typeof fetch = async (input, init) => {
+  const response = await fetch(input, init);
+  if (!response.ok) {
+    throw new Error("Request failed: " + response.status); // return으로 바뀌면 오류를 잡아낸다.
+  }
+  return response;
+};
+```
+
+다른 함수의 시그니처를 사용하기 위해 typeof fn을 사용한다.
