@@ -296,3 +296,148 @@ function 키워드를 쓰는 함수 문장과 const 변수에 함수를 담는 �
 공통 콜백 함수를 위한 타입 선언을 제공하는 것이 좋다 -> 라이브러리 만든다면
 
 결론은 TS에서는 함수 표현식을 사용하자 다른 라이브러리에서 미리 정의된 함수 타입을 가져와서 쓸 때도 인자나 반환값들을 TS에게 자동추론 하도록 맡길 수 있다.
+
+## 아이템 13 타입과 인터페이스의 차이점 이해하기
+
+일반적으로는 interface 쓰자
+
+함수 타입은 type 키워드 쓰는게 선호된다.
+
+interface는 복잡한 상황에서 한계가 있다.
+
+유니온 타입은 있지만, 유니온 인터페이스는 없다.
+
+interface에는 "보강"이라는 개념이 있다.
+
+한 파일 안에 동일한 이름의 interface가 정의된 경우에만 보강이 적용된다.
+같은 이름으로 여러 interface를 선언하면, ts가 자체적으로 1개의 interface로 합쳐준다는 것이다 "보강"이다.
+
+또 다른 차이점으로는 특정 스코프 내에서 발생한다.
+type 별칭은 함수 내에서 타입이 정의되고, 그 타입의 값을 내보내도 문제가 발생하지 않는다. 말 그대로 별칭이기 때문에 크게 상관하지 않는다.
+
+중요한 것은 interface이다. interface로 정의된 타입은 TS가 interface 이름으로 접근하려 한다.
+
+```ts
+export function getHummer() {
+  interface Hummingbird {
+    name: string;
+    weightGrams: number;
+  }
+  const bee: Hummingbird = { name: "Bee Hummingbird", weightGrams: 2.3 };
+  return bee;
+}
+```
+
+이 코드에서 에러가 발생하는 이유는 bee는 Hummingbird라는 인터페이스이다.
+d.ts (ts 빌드할 때 만들어지는 파일) 파일을 생성하도록 설정했을 때 문제가 발생하는데, Hummingbird interface는 getHummer 함수 스코프 안에서 정의되어 있는데 외부에서 접근하려고 하니까 오류가 발생하는 것이다.
+
+AI의 말을 빌리자면,
+
+```
+타입스크립트 컴파일러가 .d.ts 파일을 작성하려고 보니, 외부에서 절대 접근할 수 없는(스코프에 갇힌) 이름을 공개 API(export된 함수)의 설명서에 적어야 하는 모순적인 상황을 발견하고 미리 차단(에러)하는 것"
+```
+
+**결론**
+
+중요한 것은 일반적으로 interface 키워드를 작성하고, 복잡한 타입을 표현해야 될 때만 type을 쓰자는 것이다.
+
+## 아이템 14 변경 관련 오류 방지를 위해 readonly 사용하기
+
+자바스크립트의 기본형은 불변이다.
+하지만 배열과 객체는 가변이다.
+이 부분에서 TS의 readonly 접근자가 사용될 수 있다.
+
+객체 전체를 readonly하고싶으면 Readonly<T>를 쓰면 된다.
+
+주의사항 1. 기능이 얕게 동작한다.
+
+내부 값이 변경될 수 있다는 말이다.
+
+```ts
+interface Outer {
+  inner: {
+    x: number;
+  };
+}
+const obj: Readonly<Outer> = { inner: { x: 0 } };
+obj.inner = { x: 1 };
+obj.inner.x = 1; // OK
+```
+
+Outer 자체는 readonly이지만, 안에 존재하는 inner 객체는 적용되지 않아서 inner 객체의 값은 바꿀 수 있는 것이다.
+
+만약 깊은 readonly를 사용하고 싶다면 `ts-essentials`에 있는 DeepReadonly 제네릭을 사용하도록 하자.
+
+주의사항 2. 속성을 변경하는 메서드가 있으면, Readonly로 막을 수 없다.
+date.setFullYear같이 직접 값을 변경하는 메서드가 있다면 readonly로 되어있어도 값이 바뀔 수 있다는 점이다.
+
+---
+
+number[](Array<T>)와 readonly number[](ReadonlyArray<T>)
+
+ReadonlyArray<T>에는 pop, push, shift같이 값을 변경할 수 있는 메서드가 없음
+
+Array<T>는 ReadonlyArray<T>의 서브타입임
+
+readonly가 재할당을 방지하는 것은 아니다.
+const는 한 번 선언하면 재할당을 할 수 없다.
+하지만 readonly는 새로운 값으로의 재할당 자체는 할 수 있다.
+단지 값의 변경이 안되는 것 뿐이다.
+
+매개변수를 readonly로 바꿀 때의 문제점
+
+- readonly가 매개변수인 함수 안에서 같은 매개변수로 또 다른 함수를 호출하면 그때도 readonly로 바꾸어야함
+
+```ts
+// 1. 일반 함수 (원본을 훼손할 가능성이 있음)
+function mutateArray(arr: number[]) {
+  arr.push(100);
+}
+
+// 2. 안전한 함수 (readonly 약속)
+function safeFunction(arr: readonly number[]) {
+  // ❌ 에러 발생!
+  // "나는 원본 안 건드린다고 약속(readonly)했는데,
+  // 그걸 훼손할지도 모르는 일반 함수(mutateArray)한테 넘겨줄 순 없어!"
+  mutateArray(arr);
+}
+```
+
+이를 해결하려면 어쩔 수 없이 타입 단언을 써야할 수도 있음
+
+결론은 변하지 않는 값이라면 readonly를 써서 컴파일러와 개발자 모두에게 readonly라는 것을 알려주자!
+= readonly 적극적으로 쓰자
+
+## 아이템 15 타입 연산과 제네릭 사용으로 반복 줄이기
+
+클린 코드를 위해 중복을 제거하는 것처럼 타입도 반복되면 공통으로 추출하자
+
+**매핑된 타입**을 이용해 중복을 줄이는 방법
+
+```ts
+type TopNavState = {
+  [K in "userId" | "pageTitle" | "recentFiles"]: State[K];
+};
+```
+
+사실이건 Pick 유틸리티 타입과 똑같은 것임 Pick 내부적으로 이렇게 작동한다고 생각하면 된다.
+
+```ts
+type OptionsUpdate = { [k in keyof Options]?: Options[k] };
+```
+
+이건 Partial 유틸리티 타입이다.
+
+(+ keyof는 타입을 받아서 속성 타입의 유니온을 반환한다.)
+
+매핑된 타입과 as를 함께 이용하면 키와 값을 반전시키는 타입을 만들 수도 있다!
+
+`K in keyof T`와 같은 형태로 매핑된 타입을 사용한다면 TS는 이를 `동형 매핑 타입`으로 다룬다.
+동형 매핑 타입이란 readonly나 ?같은 접근자를 그대로 복사해준다.
+하지만, keyof 없이 [K in 'name']처럼 직접 매핑을 하면 동형이 아니기 때문에 readonly같은 키워드들이 다 날아간다.
+`Pick` 유틸리티 타입도 동형매핑 타입이다!
+
+함수나 메서드의 반환값에 대한 타입을 만들도 싶으면 ReturnType<T>를 쓰면 된다.
+이 제네릭에는 반환값을 얻고싶은 함수 그 자체를 쓰면 안되고, `typeof 함수명`을 써야한다!
+
+덤으로 성급한 추상화 하지말자!!
