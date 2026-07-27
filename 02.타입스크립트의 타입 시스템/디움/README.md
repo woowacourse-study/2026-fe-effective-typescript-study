@@ -382,3 +382,101 @@ type TopNavState = {
 
 우연히 같은 이름과 타입을 가지고 있고, 용도가 다르면 중복을 제거하지 않아도 된다.
 -> 잘못된 추상화보다 중복이 낫다는 말을 기억하자.
+
+## 아이템 16
+
+### 인덱스 시그니처
+
+```ts
+type Rocket = {
+	[property: string]: string;
+};
+```
+
+- 키의 이름(property) : 키의 위치만 표시하는 용도. 무시할 수 있는 정보이다.
+- 키의 타입(string) : string | number | symbol의 서브타입이어야 한다.
+- 값의 타입(string) : 어떠한 타입이 와도 가능하다.
+
+단점
+- 잘못된 키를 포함한 모든 키를 허용한다(ex. Name)
+- 특정 키가 필요하지 않다.
+- 키마다 다른 타입을 가질 수 없다.
+- 자동완성 기능이 동작하지 않는다.
+
+인덱스 시그니처는 동적 데이터를 표현할 때 사용하지만 동적인 데이터를 모델링하기 위해서는 `Map` 타입을 사용하는 것이 더 낫다. 
+
+-> 데이터를 사용하는 시점에 오류를 발견하기보다는 오류를 미리 발견할 수 있다.
+
+가능한 필드가 제한되어 있는 타입에는 인덱스 시그니처를 사용하면 안된다.
+
+-> 가능하다면 인덱스 시그니처보다 정확한 타입을 사용하는 것이 좋다.
+
+## 아이템 17
+
+암시적 타입 강제란 JavaScript가 연산을 수행하기 위해 **개발자가 변환하지 않았는데도 값의 타입을 자동으로 바꾸는 것**을 의미한다.
+
+### 자바스크립트 객체의 키는 문자열
+
+배열도 객체이므로 숫자로 접근해도 런타임에서는 문자열 키로 변환된다.
+
+``` ts
+const xs = [10, 20, 30];
+
+xs[1];       // 20
+xs["1"];     // 20
+Object.keys(xs); // ["0", "1", "2"]
+```
+
+따라서 다음 객체의 `1`도 실질적으로 `"1"`이라는 키이다.
+
+``` ts
+const x = { 1: "one" };
+```
+
+### TypeScript의 숫자 인덱스는 런타임 동작이 아니다
+
+``` ts
+interface NumberDictionary {
+  [index: number]: string;
+}
+```
+
+이는 **타입 검사 단계에서만 존재하는 편의 기능**. 자바스크립트 런타임에 진짜 숫자 키가 생기는 것은 아니다.
+
+``` ts
+const values: NumberDictionary = {
+  0: "zero",
+  1: "one",
+};
+
+Object.keys(values); // 타입과 달리 실제 결과는 string[]
+```
+
+### 배열 메서드가 필요 없다면 `ArrayLike<T>`
+
+함수가 숫자 인덱싱과 `length`만 필요로 한다면 `ArrayLike<T>`를 사용한다.
+
+``` ts
+function checkedAccess<T>(
+  values: ArrayLike<T>,
+  index: number
+): T {
+  if (index < values.length) {
+    return values[index];
+  }
+
+  throw new Error();
+}
+```
+
+일반 배열뿐 아니라 다음처럼 배열과 비슷한 객체도 받을 수 있다.
+
+``` ts
+const tupleLike: ArrayLike<string> = {
+  0: "A",
+  1: "B",
+  length: 2,
+};
+```
+
+`ArrayLike` 객체의 키도 런타임에서 확인하면 문자열이다.
