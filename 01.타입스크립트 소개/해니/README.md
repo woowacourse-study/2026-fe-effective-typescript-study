@@ -199,3 +199,315 @@ function calculateLength1(v: Vector3D) {
 #### 요약
 
 `any` 타입은 타입 체커와 언어 서비스를 무력화시키고, 진짜 문제점을 감추며, 개발 경험과 타입 시스템의 신뢰도를 떨어뜨린다. 최대한 사용을 피하자.
+
+## 아이템 13. 타입과 인터페이스의 차이점 이해하기
+
+타입스크립트에서 명명된 타입을 정의하는 방법은 `interface`와 `type` 두 가지가 있다.
+대부분의 경우 둘 다 사용할 수 있으므로, **같은 상황에서는 동일한 방법으로 정의해 일관성을 유지**하는 것이 중요하다.
+
+> 접두사로 `I` 또는 `T`를 붙이는 것은 지양하자.
+
+### 공통점
+
+1. **함수 타입 정의** : JS에서 함수도 객체이므로 함수 타입은 `interface`와 `type` 둘 다로 정의할 수 있다.
+
+```ts
+type TFn = (x: number) => string;
+
+interface IFn {
+  (x: number): string;
+}
+
+type TFnAlt = {
+  (x: number): string;
+};
+```
+
+함수 타입은 타입 별칭(`type`)을 쓰는 것이 더 자연스럽고 간결하다.
+
+2. **확장** : 서로 확장이 가능하다.
+
+- `interface`는 `extends`
+- `type`은 교차 타입 `&`
+- 오류를 더 잘 찾아내는 `interface` + `extends` 조합이 권장된다.
+
+3. **재귀** — 둘 다 재귀 타입을 표현할 수 있다.
+
+```ts
+interface TreeNode {
+  value: string;
+  children: TreeNode[];
+}
+
+type TreeNode = {
+  value: string;
+  children: TreeNode[];
+};
+```
+
+### 차이점
+
+**interface는 불가능, type만 가능한 것**
+
+- 원시 타입 정의
+- 유니온 타입 (유니온 인터페이스는 없다)
+- 튜플 정의
+
+```ts
+interface A {
+  name: "A";
+}
+interface B {
+  name: "B";
+}
+
+type AB = A | B;
+type Name = AB["name"]; // 'A' | 'B'
+```
+
+동일한 키에 값이 다른 interface를 유니온으로 결합하면, 해당 키도 유니온으로 결합된다.
+
+**type은 불가능, interface만 가능한 것**
+
+같은 이름의 interface를 여러 번 선언하면 TS가 하나로 합쳐준다. 이를 **보강(declaration merging)** 이라 한다.
+
+```ts
+interface IState {
+  name: string;
+  capital: string;
+}
+
+interface IState {
+  population: number;
+}
+
+const wyoming: IState = {
+  name: "Wyoming",
+  capital: "Cheyenne",
+  population: 578_000,
+};
+```
+
+- 하나의 프로젝트 안에서 남발하면 타입이 여러 곳에 흩어져 혼란을 준다.
+- 주로 외부 라이브러리의 타입을 보강할 때 사용한다.
+
+**스코프 차이 — `.d.ts` 생성 시 주의**
+
+`type` 별칭은 함수 내부에서 정의한 뒤 그 값을 내보내도 문제가 없다.
+반면 interface로 정의한 타입은 TS가 그 **이름으로 접근**하려 하기 때문에, 함수 스코프에 갇힌 interface를 외부로 노출하면 오류가 발생할 수 있다.
+
+```ts
+export function getHummer() {
+  interface Hummingbird {
+    name: string;
+    weightGrams: number;
+  }
+  const bee: Hummingbird = { name: "Bee Hummingbird", weightGrams: 2.3 };
+  return bee;
+}
+```
+
+`.d.ts` 파일을 생성하도록 설정하면,
+컴파일러가 외부에서 접근할 수 없는(스코프에 갇힌) 이름을 공개 API의 설명서에 적어야 하는 모순을 발견하고 미리 에러로 차단한다.
+
+### 결론
+
+**일반적으로는 `interface`를 사용하고, 복잡한 타입(유니온, 튜플, 원시 타입 같은 것들)을 표현해야 할 때만 `type`을 쓰자.**
+
+---
+
+## 아이템 14. 변경 관련 오류 방지를 위해 readonly 사용하기
+
+자바스크립트의 기본형은 불변이지만, **배열과 객체는 가변**이다. 여기서 TS의 `readonly` 접근자가 유용하다.
+
+- `readonly` 속성으로 값 변경을 방지할 수 있다.
+- 객체 전체를 막고 싶으면 `Readonly<T>` 제네릭 유틸리티 타입을 쓴다.
+
+### 주의사항
+
+**1. 얕게(shallow) 동작한다.**
+
+`Readonly<T>`는 속성에만 적용되고 내부 중첩 객체는 여전히 변경 가능하다.
+
+```ts
+interface Outer {
+  inner: { x: number };
+}
+
+const obj: Readonly<Outer> = { inner: { x: 0 } };
+obj.inner = { x: 1 }; // 에러 (inner 재할당 불가)
+obj.inner.x = 1; // OK (내부 값은 변경 가능)
+```
+
+깊은 readonly가 필요하면 `ts-essentials`의 `DeepReadonly` 제네릭을 사용한다.
+
+**2. 속성을 변경하는 메서드는 막지 못한다**
+
+`date.setFullYear()`처럼 내부 값을 직접 바꾸는 메서드가 있으면 `readonly`여도 값이 바뀐다.
+
+### 배열 : `number[]` vs `readonly number[]`
+
+- `readonly number[]`(`ReadonlyArray<T>`)에는 `pop`, `push`, `shift` 같은 변경 메서드가 없다.
+- `Array<T>`는 `ReadonlyArray<T>`의 서브타입이다.
+
+**readonly는 재할당을 막지 않는다.**
+-> `const`는 변수 자체의 재할당을 막지만, `readonly`는 값의 변경을 막을 뿐 새로운 값으로의 재할당은 가능하다.
+
+### 함수 매개변수에 readonly 사용
+
+```ts
+function printNames(names: string[]) {
+  names.push("Kim"); // 원본을 훼손할 수 있음
+}
+```
+
+매개변수를 `readonly`로 받으면 **"이 함수는 배열을 읽기만 하고 변경하지 않는다"** 는 사실을 타입으로 표현할 수 있다.
+
+- 함수 내부에서 매개변수 변경이 일어나는지 컴파일러가 체크한다.
+- 호출부에 변경이 없음을 명시한다.
+- 호출부에서는 readonly 배열/객체를 전달할 수 있게 된다.
+
+**전파 문제** : readonly 매개변수를 받는 함수 안에서 그 값을 다른 함수에 넘기면, 그 함수도 readonly를 받아야 한다.
+
+```ts
+function mutateArray(arr: number[]) {
+  arr.push(100);
+}
+
+function safeFunction(arr: readonly number[]) {
+  mutateArray(arr); // 에러
+  // readonly로 약속했는데, 훼손할지 모르는 일반 함수에 넘길 수 없다
+}
+```
+
+해결하려면 어쩔 수 없이 타입 단언을 써야 할 수도 있다.
+
+### 결론
+
+**변하지 않는 값이라면 `readonly`를 적극적으로 써서, 컴파일러와 개발자 모두에게 불변임을 알리자.**
+
+---
+
+## 아이템 15. 타입 연산과 제네릭 사용으로 반복 줄이기
+
+클린 코드에서 중복을 제거하듯, **타입에서도 DRY 원칙**을 지켜야 한다.
+타입 중복은 코드 중복만큼 많은 문제를 낳는다.
+
+### 이름 붙이기
+
+가장 간단한 방법은 반복되는 타입에 이름을 붙이는 것이다.
+
+```ts
+interface Point2D {
+  x: number;
+  y: number;
+}
+
+function distance(a: Point2D, b: Point2D) {}
+```
+
+### 확장으로 중복 제거
+
+`interface`는 `extends`, `type`은 `&`로 공통 속성을 확장한다. 타입은 닫혀 있지 않아 더 유연하게 확장할 수 있다.
+
+```ts
+interface Person {
+  firstName: string;
+  lastName: string;
+}
+
+interface PersonWithBirth extends Person {
+  birth: number;
+}
+```
+
+### 인덱스 접근 타입
+
+```ts
+interface State {
+  userId: string;
+  pageTitle: string;
+  recentFiles: string[];
+  pageContents: string;
+}
+
+interface TopNavState {
+  userId: State["userId"];
+  pageTitle: State["pageTitle"];
+  recentFiles: State["recentFiles"];
+}
+```
+
+### 매핑된 타입과 유틸리티 타입
+
+매핑된 타입으로 더 개선할 수 있고, 이것이 바로 `Pick`의 내부 동작이다.
+
+```ts
+type TopNavState = {
+  [K in "userId" | "pageTitle" | "recentFiles"]: State[K];
+};
+```
+
+- `Pick<T, K>` : 위 매핑된 타입과 동일
+- `Partial` : 모든 속성을 선택적으로
+
+```ts
+type OptionsUpdate = { [k in keyof Options]?: Options[k] };
+```
+
+- `keyof`는 타입을 받아 속성 키들의 유니온을 반환한다.
+- 매핑된 타입과 `as`를 함께 쓰면 키와 값을 반전시킬 수도 있다.
+
+**동형 매핑 타입(homomorphic)**
+`K in keyof T` 형태로 매핑하면 TS는 이를 동형 매핑 타입으로 다뤄 `readonly`, `?` 같은 접근자를 그대로 복사한다.
+`keyof` 없이 `[K in 'name']`처럼 직접 매핑하면 동형이 아니라서 이런 키워드가 날아간다. `Pick`도 동형 매핑 타입이다.
+
+### 함수/제네릭 관련
+
+**부분만 확장** : 부모의 모든 속성을 가져오지 않을 땐 `Pick`으로 일부만 확장한다.
+
+```ts
+interface Action {
+  name: string;
+  type: string;
+  prop: string;
+}
+
+type SaveAction = Pick<Action, "name" | "type"> & {
+  data: string;
+};
+```
+
+**제네릭 매개변수 제한** : `extends`로 제네릭이 받을 수 있는 타입을 제한한다.
+
+```ts
+interface A {
+  name: string;
+}
+
+type B<T extends A> = [T];
+
+const b: B<{ name: string }> = [{ name: "B" }];
+```
+
+**제네릭 위치에 따른 차이** : 타입에 제네릭을 걸지, 함수 값에 걸지에 따라 다르다.
+
+```ts
+type A<T> = (param: T) => T; // 타입 선언 시 타입 결정
+type B = <T>(param: T) => T; // 함수 호출 시 타입 결정
+
+const a: A<string> = (param) => param;
+const b: B = (param) => param;
+
+const bReturn = b(1); // 호출 시점에 결정
+const bReturn2 = b<string>("");
+```
+
+- `A`: 타입 자체에 제네릭 => 변수 선언 시 타입을 고정한다.
+- `B`: 함수 값에 제네릭 => 호출할 때 타입을 결정해 더 유연하다.
+
+**반환 타입 추출** : 함수의 반환 타입은 `ReturnType<T>`로 만든다. 이때 함수 자체가 아니라 `typeof 함수명`을 넣어야 한다.
+
+### 결론
+
+**반복되는 타입은 이름 붙이기, 확장, 매핑된 타입, 유틸리티 타입(`Pick`, `Partial`, `ReturnType` 등)으로 줄이자. 단, 성급한(잘못된) 추상화보다는 중복이 낫다.**
