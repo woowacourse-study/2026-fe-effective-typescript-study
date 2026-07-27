@@ -226,4 +226,159 @@ TS에서의 할당 : 어떤 값의 타입을, 어떤 대상 타입으로 사용�
 - 기존 함수와 같은 매개변수를 받는 새 함수를 만들 때 사용할 수 있다.
 - 반환 타입은 추출하지 않으므로 새 함수에서 다르게 지정할 수 있다.
 
+## 아이템 13
 
+대부분의 경우에는 type을 사용해도 되고 interface를 사용해도 된다.
+- 같은 상황에서는 동일한 방법으로 타입을 정의해 일관성을 유지해야 한다.
+- 특정 목적이나 의도가 분명해지는 경우에는 type을 사용하고, 일반적으로는 interface를 사용한다.
+
+> 접두사로 I 또는 T를 사용하는 것은 지양하자
+
+### 공통점
+
+JS에선 함수 또한 객체이기 때문에 함수 타입도 interface나 type으로 정의할 수 있다.
+```ts
+type TFn = (x: number) => string;
+interface IFn {
+	(x: number): string;
+}
+type TFnAlt = {
+	(x: number): string;
+};
+```
+
+함수 타입 정의는 타입 별칭을 사용하는 것이 더 자연스럽고 간결하다.
+
+interface와 type은 서로 확장 가능하다.
+- `interface`는 `extends`
+- `type`은 교차 타입 `&`
+- 오류를 더 찾아낼 수 있는 `interface`와 `extends` 조합을 사용하는 것이 좋다.
+
+type과 interface의 재귀
+``` ts
+interface TreeNode {
+  value: string;
+  children: TreeNode[];
+}
+
+type TreeNode = {
+  value: string;
+  children: TreeNode[];
+};
+```
+
+### 차이점
+
+interface에는 유니온의 개념이 없다.
+
+interface에는 **타입 보강**이 있다.
+``` ts
+interface IState {
+  name: string;
+  capital: string;
+}
+
+interface IState {
+  population: number;
+}
+
+const wyoming: IState = {
+  name: 'Wyoming',
+  capital: 'Cheyenne',
+  population: 578_000,
+}; // 정상
+```
+
+핵심 : 반드시 사용해야 하거나 사용해야 할 이유가 있으면 type, 그렇지 않으면 일반적으론 interface를 사용한다.
+
+## 아이템 14
+
+`readonly` 속성을 사용해서 값 변경을 방지할 수 있다.
+
+`Readonly<T>` 제네릭 유틸리티 타입을 사용하면 객체의 모든 속성에 할당을 방지할 수 있다.
+
+`readonly` 주의사항
+- 얕게 동작한다.
+- `Readonly<T>` 가 속성에만 적용된다.
+
+### 함수의 매개변수에 readonly 사용
+
+```ts
+function printNames(names: string[]) {
+  names.push('Kim');
+}
+```
+배열을 일반 배열로 받으면 함수 내부에서 직접 수정할 수 있다.
+하지만 `readonly`를 사용하면 함수가 배열을 **읽기만 하고 변경하지 않는 함수**라는 사실을 타입에 표현할 수 있다.
+
+- 함수 내에서 해당 매개변수가 변경이 발생하는지 체크한다.
+- 함수의 호출부에 매개변수가 변경되지 않는다는 사실을 명시한다.
+- 호출부에서는 readonly 배열이나 readonly 객체만 전달하게 된다.
+
+함수가 매개변수를 변경하지 않는다면 readonly를 사용하는 것이 좋다.
+
+## 아이템 15
+
+같은 코드는 반복하지 마라는 **DRY 원칙**을 타입에서도 지켜야 한다.
+
+타입 중복은 코드 중복만큼 많은 문제를 발생시킨다.
+-> 가장 간단한 방법은 타입에 이름을 붙이는 것
+```ts
+interface Point2D{
+	x: number;
+	y: number;
+}
+
+function distance(a: Point2D, b: Point2D) {}
+```
+
+한 인터페이스가 다른 인터페이스를 확장하게 하는 방법을 통해 중복을 제거할 수 있다.
+```ts
+interface Person{
+	firstName: string;
+	lastName: string;
+}
+
+interface PersonWithBirth extends Person{
+	birth: number;
+}
+```
+
+### 타입 중복 제거해보기
+
+```ts
+interface State {
+  userId: string;
+  pageTitle: string;
+  recentFiles: string[];
+  pageContents: string;
+}
+
+interface TopNavState {
+  userId: string;
+  pageTitle: string;
+  recentFiles: string[];
+}
+```
+`userId`, `pageTitle`, `recentFiles`가 중복된다.
+
+```ts
+interface TopNavState {
+  userId: State['userId'];
+  pageTitle: State['pageTitle'];
+  recentFiles: State['recentFiles'];
+}
+```
+인덱스 접근 타입으로 중복을 줄일 수 있다.
+
+```ts
+type TopNavState = {
+  [K in 'userId' | 'pageTitle' | 'recentFiles']: State[K];
+};
+```
+매핑된 타입을 사용해 좀 더 개선할 수 있다.
+
+- 이 패턴을 사용한 대표적인 예시가 `Pick`이다.
+
+우연히 같은 이름과 타입을 가지고 있고, 용도가 다르면 중복을 제거하지 않아도 된다.
+-> 잘못된 추상화보다 중복이 낫다는 말을 기억하자.
