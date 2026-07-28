@@ -638,7 +638,7 @@ const bReturn2 = b<string>("");
 
 **반복되는 타입은 이름 붙이기, 확장, 매핑된 타입, 유틸리티 타입(`Pick`, `Partial`, `ReturnType` 등)으로 줄이자. 단, 성급한(잘못된) 추상화보다는 중복이 낫다.**
 
-## 아이템 16 인덱스 시그니처보다 정확한 타입 사용하기
+### 아이템 16 인덱스 시그니처보다 정확한 타입 사용하기
 
 JavaScript에서는 객체의 모든 키가 문자열로 변환된다.
 배열도 객체이고, 배열의 인덱스도 내부적으로는 문자열 속성으로 저장된다.
@@ -659,34 +659,45 @@ TypeScript는 숫자 인덱스 시그니처를 지원하지만, 이는 타입 �
 
 ---
 
-## 아이템 17 숫자 인덱스 시그니처 지양하기
+### 아이템 17 숫자 인덱스 시그니처 지양하기
 
-함수의 매개변수를 수정하지 않는다면 `readonly` 키워드로 명시하는 것이 좋은 관례다.
-이렇게 하면 함수 내부에서 실수로 매개변수를 변경하는 코드를 작성했을 때 TypeScript가 즉시 오류를 띄워준다.
+타입과 런타임은 다르다.
+!!! 객체의 모든 키는 문자열이다. !!!
 
-```typescript
-function process(arr: readonly number[]) {
-  arr[0] = 1; // x 컴파일 에러
+JavaScript는 배열이든 객체든 상관없이 숫자로 접근해도 자동으로 문자열 키로 변환한다.
+
+```ts
+const arr = [10, 20];
+arr[0] === arr["0"]; // true
+```
+TypeScript는 표면적일 뿐이다.
+
+TypeScript의 숫자 인덱스 시그니처는 코드 작성할 때만 유효한 환상이다.
+
+```ts
+interface Foo {
+  [index: number]: string; // 타입 검사에서만 작동
 }
+
+const foo: Foo = { 0: "a" };
+Object.keys(foo); // 결과: ["0"] <- 문자열 배열
 ```
 
-다만 `Readonly<T>`는 **얕은(shallow) 복사**만 적용된다는 점에 주의해야 한다.
-중첩된 객체의 속성은 여전히 수정 가능하다.
+런타임에는 여전히 문자열 키다.
 
-```typescript
-interface Config {
-  options: { timeout: number };
+배열의 push, map 같은 메서드가 필요 없고, 단순히 인덱싱으로 값을 꺼내는 것만 필요하면?
+
+```ts
+function grab<T>(collection: ArrayLike<T>, idx: number): T {
+  if (idx < collection.length) return collection[idx];
+  throw new Error();
 }
 
-const config: Readonly<Config> = {
-  options: { timeout: 5000 },
-};
+// 배열도 받고
+grab([1, 2, 3], 0);
 
-config.options.timeout = 10000; // o 여전히 가능
+// 유사 배열도 받는다
+grab({ 0: "A", 1: "B", length: 2 }, 0);
 ```
 
-깊은 readonly가 필요하면 재귀적으로 모든 속성에 `readonly`를 적용해야 하거나,
-`as const` 단언을 사용하는 방법이 있다.
-일부 라이브러리들도 `DeepReadonly` 유틸리티 타입을 제공한다.
-
-=> API 응답이나 설정 객체처럼 변경하면 안 되는 데이터는 최상위 레벨이라도 `readonly`를 명시하면 팀의 의도를 분명히 전달할 수 있다.
+핵심: 타입으로 거짓말하지 말고, 실제로 필요한 것을 정의하자.
