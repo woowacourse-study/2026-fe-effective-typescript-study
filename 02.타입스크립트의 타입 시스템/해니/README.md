@@ -637,3 +637,56 @@ const bReturn2 = b<string>("");
 #### 결론
 
 **반복되는 타입은 이름 붙이기, 확장, 매핑된 타입, 유틸리티 타입(`Pick`, `Partial`, `ReturnType` 등)으로 줄이자. 단, 성급한(잘못된) 추상화보다는 중복이 낫다.**
+
+## 아이템 16 인덱스 시그니처보다 정확한 타입 사용하기
+
+JavaScript에서는 객체의 모든 키가 문자열로 변환된다.
+배열도 객체이고, 배열의 인덱스도 내부적으로는 문자열 속성으로 저장된다.
+
+```typescript
+interface Array<T> {
+  [n: number]: T;
+}
+```
+
+TypeScript는 숫자 인덱스 시그니처를 지원하지만, 이는 타입 시스템상의 표현일 뿐 런타임에는 모두 문자열로 처리된다.
+따라서 배열을 다룰 때는 기본으로 제공되는 **Array**, **튜플**, **ArrayLike** 타입을 활용하는 것이 훨씬 명확하다.
+
+특히 ArrayLike는 배열의 메서드가 필요 없고 인덱싱과 length 속성만 필요한 경우에 유용하다.
+이를 통해 타입 의도를 명시적으로 표현할 수 있고, 불필요한 배열 메서드를 실수로 호출하는 것도 방지할 수 있다.
+
+=> 숫자 키를 가진 동적 객체가 필요하다면, `Record<number, T>` 대신 `Map<number, T>`를 고려해보자. 타입 안정성과 성능 측면에서 더 유리하다.
+
+---
+
+## 아이템 17 숫자 인덱스 시그니처 지양하기
+
+함수의 매개변수를 수정하지 않는다면 `readonly` 키워드로 명시하는 것이 좋은 관례다.
+이렇게 하면 함수 내부에서 실수로 매개변수를 변경하는 코드를 작성했을 때 TypeScript가 즉시 오류를 띄워준다.
+
+```typescript
+function process(arr: readonly number[]) {
+  arr[0] = 1; // x 컴파일 에러
+}
+```
+
+다만 `Readonly<T>`는 **얕은(shallow) 복사**만 적용된다는 점에 주의해야 한다.
+중첩된 객체의 속성은 여전히 수정 가능하다.
+
+```typescript
+interface Config {
+  options: { timeout: number };
+}
+
+const config: Readonly<Config> = {
+  options: { timeout: 5000 },
+};
+
+config.options.timeout = 10000; // o 여전히 가능
+```
+
+깊은 readonly가 필요하면 재귀적으로 모든 속성에 `readonly`를 적용해야 하거나,
+`as const` 단언을 사용하는 방법이 있다.
+일부 라이브러리들도 `DeepReadonly` 유틸리티 타입을 제공한다.
+
+=> API 응답이나 설정 객체처럼 변경하면 안 되는 데이터는 최상위 레벨이라도 `readonly`를 명시하면 팀의 의도를 분명히 전달할 수 있다.
