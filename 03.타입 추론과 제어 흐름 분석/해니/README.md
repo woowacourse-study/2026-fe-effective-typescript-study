@@ -72,3 +72,145 @@ TypeScript에서 변수의 타입은 3가지 방식으로 결정된다.
 #### 부분적 구성이 필요한 경우
 
 인터페이스 타입을 명시하고 한 번에 모든 속성을 정의해야 한다. 선택적 속성이 있더라도 한 번에 객체를 만드는 것이 좋다. 구성 로직이 복잡하면 함수를 만들어서 완성된 객체를 반환하는 방식이 더 타입 안전하다.
+
+---
+
+### 아이템 22. 타입 좁히기
+
+타입 좁히기는 변수가 가질 수 있는 타입의 집합을 점진적으로 좁혀나가는 과정이다.
+
+- 초기: 넓은 타입 (예: `string | number`)
+- 조건문 이후: 좁혀진 타입 (예: `string`)
+
+#### 타입 별칭과 타입 좁히기의 문제
+
+타입 별칭을 사용하면 **타입 좁히기가 제대로 작동하지 않을 수 있다**는 점이 중요하다.
+
+```typescript
+type Named = { kind: "named"; name: string };
+type Unnamed = { kind: "unnamed" };
+type Thing = Named | Unnamed;
+
+const logThing = (t: Thing) => {
+  if (t.kind === "named") {
+    // 여기서 t는 Named로 좁혀짐
+    console.log(t.name);
+  }
+};
+```
+
+이 경우는 잘 작동하지만, 복잡한 타입 별칭이나 조건부 타입이 섞이면 타입스크립트가 좁혀진 타입을 인식하지 못할 수 있다.
+
+#### Map의 `has()`와 `get()` 메서드
+
+```typescript
+const map = new Map<string, number>();
+map.set("x", 1);
+
+const key = "x";
+if (map.has(key)) {
+  const value = map.get(key); // value: number | undefined
+  // 타입스크립트는 여전히 undefined를 포함함
+}
+```
+
+**이유:**
+
+1. 타입 시스템이 `has()`와 `get()` 메서드 사이의 논리적 연결을 보장할 수 없음
+2. `has()` 체크 이후 Map이 변경될 가능성이 있음
+3. Map의 제네릭 정의가 `get()`을 항상 `V | undefined`로 반환하도록 설계됨
+
+**해결책:**
+
+```typescript
+// 방법 1: 커스텀 타입 가드
+const getMapValue = <K, V>(map: Map<K, V>, key: K): V | null => {
+  if (map.has(key)) {
+    return map.get(key)!; // Non-null assertion (신중하게 사용)
+  }
+  return null;
+};
+
+// 방법 2: 변수에 할당
+const value = map.get(key);
+if (value !== undefined) {
+  // value: number
+}
+```
+
+---
+
+### 아이템 23. 일관성 있는 별칭 사용하기
+
+객체의 속성을 새로운 변수에 저장하면, **타입스크립트는 두 개를 독립적으로 추적한다**.
+
+```typescript
+interface Vector {
+  x?: number;
+  y?: number;
+}
+
+const getVector = (): Vector => ({ x: 1, y: 1 });
+
+const vector = getVector();
+let x = vector.x; // x: number | undefined
+
+if (vector.x !== undefined) {
+  // 조건문은 vector.x를 체크했지만
+  x += 1; // 에러: x는 여전히 number | undefined
+}
+```
+
+**왜 에러가 발생하는가?**
+
+- 타입스크립트는 `vector.x` 조건을 확인했지만, **`x` 변수는 별개의 타입 체크를 진행**
+- `x`의 타입은 좁혀지지 않음 (여전히 `number | undefined`)
+- 중간에 `vector` 객체가 변경될 가능성을 배제할 수 없음
+
+#### 해결책 1: 일관된 별칭 사용
+
+```typescript
+const vector = getVector();
+let x = vector.x;
+
+if (x !== undefined) {
+  // x는 number로 좁혀짐
+  x += 1; // 정상 작동
+}
+```
+
+**단점:** 객체가 변경될 수 있을 때 문제 발생 가능
+
+```typescript
+if (x !== undefined && /* 다른 코드 실행 */ vector.x !== x) {
+  // x와 vector.x가 동기화되지 않음
+}
+```
+
+#### 해결책 2: 비구조화 할당
+
+```typescript
+const { x } = vector;
+
+if (x !== undefined) {
+  x += 1; // 타입 좁히기 정상 작동
+}
+```
+
+**장점:**
+
+- 변수와 프로퍼티를 명확히 분리
+- 타입스크립트가 일관된 변수로 인식
+- 코드의 의도가 명확함
+
+**주의사항:**
+
+```typescript
+const vector: Vector | null = null;
+const { x } = vector; // 에러: vector가 null일 수 있음
+
+// 수정
+if (vector !== null) {
+  const { x } = vector; // 정상
+}
+```
