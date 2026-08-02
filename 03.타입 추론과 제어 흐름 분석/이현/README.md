@@ -103,3 +103,79 @@ TS가 map의 has와 get 메서드 사이의 관계를 제대로 이해하지 못
 구조분해할당 써라, optional인 경우에는 추가적인 null체크가 필요하다.
 
 JS에서 객체,배열 아니면 다 깊은복사임
+
+## 아이템 24 타입 추론에 문맥이 어떻게 사용되는지 이해하기
+
+```ts
+type Language = "JavaScript" | "TypeScript" | "Python";
+function setLanguage(language: Language) {
+  /* ... */
+}
+
+setLanguage("JavaScript"); // OK
+
+let language = "JavaScript"; // -> string 타입으로 추론
+setLanguage(language);
+//          ~~~~~~~~ Argument of type 'string' is not assignable
+```
+
+해결 방법은 2가지이다.
+
+첫 번째 방법은 `language : Language`로 할당할 때 타입을 써주는 것이다.
+두 번째는 이전에 배웠던 것처럼 const를 이용하면, JavaScript 문자열 리터럴 타입이 되어서 할당 가능
+
+> Q. const로 따로 상수화를 시키는 것 자체가 문맥을 잃는다고 표현하는 것 같은데 맞나?
+> A. let이든 const든 따로 분리해서 선언하는 것 자체가 문맥을 잃게 만드는 행위이다.
+
+튜플 타입
+-> `const loc = [10, 20]`으로 정의하면, TS는 이걸 number 배열로 추론함.
+우리가 원하는건 위도, 경도 이므로 길이 2를 가지는 정확한 튜플타입이어야 함!
+
+`const loc : [number,number]= [10, 20]`도 되고, as const를 써도됨
+
+- 중요한 것은 as const로 튜플타입을 만들면 readonly가 된다는 것임.
+
+그래서 정의하는 곳에서도 readonly를 써줘야함
+
+객체도 상수를 뽑아내면, 문맥을 잃어버림.
+이런 공통적인 이유가 string으로 추론되거나 그래서 그럼
+
+객체, 콜백함수를 상수로 뺄 일이 생긴다면, 문맥을 잃게되므로 타입을 잘 맞춰주어야 한다는 것이 이번 아이템의 핵심인듯.
+
+## 아이템 25 타입의 진화 이해하기
+
+```ts
+function range(start: number, limit: number) {
+  const nums = []; // any[]로 추론된다.
+  for (let i = start; i < limit; i++) {
+    nums.push(i);
+  }
+  return nums;
+  //     ^? const nums: number[]
+}
+```
+
+첨엔 any[]인데 나중에는 number[]로 바뀜
+
+push할 때까지도 any[]임!
+
+배열에 여러 타입의 값을 넣으면 유니온이 됨. `진화`하는 것임
+
+이런걸 any의 진화, let의 진화, 배열의 진화라고 부름.
+
+- 할당이 되는 그 line에서는 이 동작이 일어나지 않음
+- 할당이 되고 나서 그 이후에 진화되는 것임
+
+조건문에서도 똑같이 사용할 수 있음.
+
+이거의 장점은 타입 구문을 줄일 수 있다는 것임
+
+타입 추론을 개선하기 위해서 forEach 대신 for-of 루프를 사용하는 것이 좋다.
+
+> const를 쓰고 null or undefined를 넣으면 각자 타입이 나오는데, let쓰면 any로 추론됨.
+
+## 아이템 26 함수형 기법과 라이브러리로 타입 흐름 유지하기
+
+서드파티 라이브러리를 써서 코드를 짧게 줄이는 것이 시간이 많이 들면, 안 쓰는 것이 낫다.
+하지만 TS의 경우에는 라이브러리나 잘 되어있는 내장함수를 쓰는 편이 더 좋다.
+타입 추론이 더 정확하게 되기 때문이다.
