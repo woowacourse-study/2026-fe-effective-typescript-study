@@ -133,4 +133,82 @@ console.log(age);
 
 -> 함수를 호출할 때 `readonly`를 사용해서 값의 변경을 방지하는 것이 좋다.
 
+## 아이템 24
 
+타입스크립트는 타입을 추론할 때 값이 존재하는 곳의 문맥까지 살핀다.
+
+### 함수의 매개변수를 변수로 분리
+
+```ts
+type Language = 'JavaScript' | 'TypeScript' | 'Python';
+
+function setLanguage(language: Language) {
+  /* ... */
+}
+
+setLanguage('JavaScript'); // 정상
+
+let language = 'JavaScript'; // 타입이 string으로 넓혀짐
+setLanguage(language);
+```
+
+해결하는 방법
+1. 타입 선언에서 할당 가능한 값을 제한 (let language: Language = 'JS')
+2. const 사용
+
+> [!tip]
+> Q. 별도의 변수로 선언하는 것이 왜 문맥으로부터 값을 분리하는 것일까?
+> 
+> 값을 함수 안에 직접 쓰면 TS는 매개변수 타입을 문맥으로 활용해 해석한다.
+> 
+> 하지만 별도의 변수로 꺼내면 변수를 선언하는 시점에는 함수와 전혀 관련이 없어진다.
+
+### 튜플 사용 시 주의점
+
+```ts
+function panTo(where: [number, number]) {}
+
+const loc = [10, 20] as const;
+panTo(loc);
+```
+
+`as const`를 사용하면 **과하게** 정확하다 -> readonly 타입이 되어버려 오히려 동작하지 않는다.
+
+또한, 타입 정의를 할 때 실수를 한다면 오류는 호출되는 곳에서 발생한다 -> 원인을 파악하기 어렵다.
+
+> [!note] 
+> 인라인 형식이나 타입 정의 적용을 고려하자!
+> ``` ts
+> function panTo(where: readonly [number, number]) {}
+> panTo([10, 20]); // 인라인 형식
+> 
+> function panTo(where: readonly [number, number]) {}
+> const loc: readonly [number, number] = [10, 20];
+> //       ^^^^^^^^^^^^^^^^^^^^^^^^^ 타입 정의 적용
+> panTo(loc);
+> ```
+
+## 아이템 25
+
+``` ts
+function range(start: number, limit: number) {
+	const nums = []; // any[]
+	for(let i = start; i < limit; i++) {
+		nums.push(i);
+	}
+	return nums; // number[]
+}
+```
+nums의 타입이 처음엔 any[]지만, number 타입의 값을 넣는 순간부터 타입은 number[]로 진화한다.
+
+any 타입의 진화는 any 타입에 **어떠한 값을 할당할 때만 발생**한다.
+
+> [!note]
+> 반복문에서의 타입 추론
+> - 일반 `for`·`for...of`: 같은 제어 흐름 안에서 `push`하므로 `any[]`가 진화할 수 있음
+> - `forEach`: `push`가 별도 콜백 함수 안에 있으므로 바깥 배열의 타입이 진화하지 않음
+> - `map`: 결과 타입을 콜백 반환값으로 곧바로 추론하므로 이 경우 가장 깔끔함
+
+## 아이템 26
+
+타입 흐름을 개선하고, 가독성을 높이고, 명시적인 타입 구문의 필요성을 줄이기 위해 직접 구현하기보다는 내장된 함수형 기법과 유틸리티 라이브러리를 사용하는 것이 좋다.
