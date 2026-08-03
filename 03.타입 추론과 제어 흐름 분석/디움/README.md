@@ -212,3 +212,143 @@ any 타입의 진화는 any 타입에 **어떠한 값을 할당할 때만 발생
 ## 아이템 26
 
 타입 흐름을 개선하고, 가독성을 높이고, 명시적인 타입 구문의 필요성을 줄이기 위해 직접 구현하기보다는 내장된 함수형 기법과 유틸리티 라이브러리를 사용하는 것이 좋다.
+
+## 아이템 27
+
+타입스크립트는 런타임에 관계 없이 async/await를 사용할 수 있다.
+
+콜백보다는 Promise나 async/await를 사용하면
+- 코드를 더 쉽게 작성할 수 있다.
+- 타입을 더 쉽게 추론할 수 있다.
+
+프로미스를 직접 생성해야 될 때 async/await를 사용해야 한다.
+- 더 간결하고 직관적인 코드가 된다.
+- async 함수는 항상 프로미스를 반환하도록 강제한다.
+
+항상 프로미스를 반환하도록 강제하면 -> 복잡한 버그를 방지하는 데 도움이 된다.
+
+> [!tip] 
+> **콜백이 어떤 때는 즉시 실행되고, 어떤 때는 나중에 실행되면 코드의 결과를 예측하기 어려워진다**
+
+### 문제가 되는 캐시 코드
+
+``` ts
+function fetchWithCache(url, callback) {
+  if (url in _cache) {
+    callback(_cache[url]); // 즉시 실행
+  } else {
+    fetchURL(url, text => {
+      _cache[url] = text;
+      callback(text);      // 나중에 실행
+    });
+  }
+}
+```
+
+이 함수의 문제는 콜백 실행 시점이 상황에 따라 달라지는 것이다.
+
+- 캐시에 있으면: 콜백이 지금 즉시 실행됨
+- 캐시에 없으면: 네트워크 요청 후 나중에 실행됨
+
+### 결과가 뒤바뀌는 이유
+
+``` ts
+function getUser(userId: string) {
+  fetchWithCache(`/user/${userId}`, profile => {
+    requestStatus = 'success';
+  });
+
+  requestStatus = 'loading';
+}
+```
+
+캐시가 없는 경우:
+
+``` txt
+fetchWithCache 호출
+→ 네트워크 요청 시작
+→ requestStatus = 'loading'
+→ 나중에 응답 도착
+→ requestStatus = 'success'
+```
+
+최종 상태는 정상적으로 `success`이다.
+
+하지만 캐시가 있는 경우:
+
+``` txt
+fetchWithCache 호출
+→ 콜백이 즉시 실행
+→ requestStatus = 'success'
+→ fetchWithCache 종료
+→ requestStatus = 'loading'
+```
+
+최종 상태가 `loading`이 된다.
+
+-> 같은 함수를 호출했는데 캐시 여부에 따라 결과가 달라진다.
+
+---
+
+### `async/await`로 고친 코드
+
+``` ts
+async function getUser(userId: string) {
+  requestStatus = 'loading';
+
+  const profile =
+    await fetchWithCache(`/user/${userId}`);
+
+  requestStatus = 'success';
+}
+```
+
+순서가 코드 그대로 보장된다.
+
+``` txt
+loading
+→ 데이터를 기다림
+→ success
+```
+
+`fetchWithCache`에서 캐시 값을 즉시 반환하더라도 `async` 함수는 항상 Promise를 반환한다. 따라서 `await` 다음 코드는 현재 동기 코드가 끝난 뒤 이어서 실행된다.
+
+
+> [!note] 
+> 콜백을 사용할 때 “가끔 즉시, 가끔 나중에” 실행되도록 만들지 말고, `async/await`를 사용해 항상 비동기 방식으로 통일하자.
+
+## 아이템 28
+
+타입스크립트의 타입 추론은 모 아니면 도이다.
+
+-> 사용된 모든 매개변수에 대해서 추론하게 만들거나, 모든 매개변수를 명시적으로 타입을 선언해야 한다.
+
+부분적인 타입 추론이 가능하게 하려면 **클래스** 또는 **커링**을 사용하면 된다.
+
+-> 타입을 결정하는 시점을 두 영역으로 분리해서 부분 추론과 같은 효과를 만드는 것이다.
+
+### 클래스
+```ts
+class ApiFetcher<API> {
+  fetch<Path extends keyof API>(
+    path: Path
+  ): Promise<API[Path]> {
+    // ...
+  }
+}
+```
+
+클래스 생성 -> API를 명시
+
+메서드 호출 -> Path를 추론
+
+### 커링
+```ts
+declare function fetchAPI<API>():
+  <Path extends keyof API>(
+    path: Path
+  ) => Promise<API[Path]>;
+  
+  fetchAPI<SeedAPI>()   // 첫 번째 호출: API를 명시
+('/seed/strawberry')  // 두 번째 호출: Path를 추론
+```
