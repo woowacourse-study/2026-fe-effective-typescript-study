@@ -87,3 +87,62 @@ interface CameraOptions extends Omit<Partial<Camera>, "center"> {
 이런 패턴을 쉽게 적용할 수 있는게 숫자 배열을 받아 함계를 계산하는 함수임
 매개변수로 number[]만 받게하면 진짜 배열밖에 못받는데, Iterable<number>를 사용하면 Map, Set같은 순회가능한 것들을 다 받을 수 있음
 -> 매개변수를 순회하는 것이 목적이면 Iterable을 쓰자!
+
+## 아이템 31 문서에 타입 정보 쓰지 않기
+
+주석으로 타입 정보를 알려주지말고, ts 문법으로 타입 명시해라 (어차피 ts 쓴다면 보통 이렇게 하겠지만)
+ts 문법을 이용해야지만 타입을 잘못 작성할 일이 줄어들고, 주석보다 오히려 더 보기 편하다.
+
+변수나 속성의 단위가 명확하지 않다면, 변수며이나 속성명에 단위를 넣는 것도 괜찮다! (`temperatureC`,`temperatureF`)
+
+## 아이템 32 타입 별칭에 null 또는 undefined 포함하지 않기
+
+`type User = {~~} | null` 이런식으로 코드 짜면 안된다.
+
+사람은 보통 User라는 별칭을 보고 User안에 있는 name, age같은 속성들에 대한 것만 떠올린다.
+만약 User라는 타입 별칭에 null까지 있으면 이걸 사용하는 곳에서는 null도 받을 수 있다는 것을 알아채기 힘들다.
+
+따라서 별칭에는 포함시키지 말고 이 타입을 사용하는 곳에서 `User | null` 이런식으로 쓰자
+
+> 내가 가장 많이하는 실수 중 하나이기도 하다.
+
+## 아이템 33 타입 주변에 null 값 배치하기
+
+일단 주변에 null 값을 배치한다는게 뭔 말인가?
+-> 바깥쪽 가장자리로 빼라는 말이다
+
+```ts
+function extent(nums: Iterable<number>) {
+  let min, max;
+  for (const num of nums) {
+    if (!min) {
+      min = num;
+      max = num;
+    } else {
+      min = Math.min(min, num);
+      max = Math.max(max, num);
+      //             ~~~ Argument of type 'number | undefined' is not
+      //                 assignable to parameter of type 'number'
+    }
+  }
+  return [min, max];
+}
+```
+
+우리는 직관적으로 min이 있으면, max도 무조건 있다는 것을 안다. 하지만 ts는 그걸 알 수 없다.
+
+현재 min, max는 둘중하나만 undefined일수도, 하나만 undefined일수도, 모두 값이 존재할 수도 있다.
+
+하지만 될 수 있는 것은 둘다 undefined거나 아니거나이다.
+
+그래서 이걸 `let minMax: [number,number] | null = null` 이런식으로 표현하면 유효한 상태만 받을 수 있게 되고, 로직에서의 오류도 잡을 수 있게 된다.
+
+또 하나 많이 하는 실수가 있는데, class를 사용할 때다.
+
+값을 fetch한 뒤에 생성하지 않고, 클래스 생성할 때는 null로 초기화 하고, init 메서드로 따로 값을 채우는 방식은 좋지 안핟.
+
+프로퍼티가 여러개 있고, 다 fetch로 값을 가져와야한다면, 특정 시점에따라 unll인 것과 채워진 것이 다 다르기 때문이다. 그래서 이를 사용하는 곳에서 null처리가 까다로워진다.
+
+따라서 먼저 fetch로 값을 가져온 후에 안전한 값으로 인스턴스를 생성하는게 낫다.
+
+> 이부분이 제목과 조금 더 직접적인 연관이 있다. 클래스 내부에서 null처리를 하지말고 외부로 null을 배치하라는 말이다.
