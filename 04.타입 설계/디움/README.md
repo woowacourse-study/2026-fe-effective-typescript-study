@@ -143,3 +143,98 @@ null을 써야 한다면 `User | null`  형태로 사용하면 된다.
 `undefined`를 포함하는 객체는 다루기 어렵기 때문에 권장하지 않는다.
 
 클래스를 생성할 때도 `null`로 초기화하지 말고, 값이 있을 때만(null이 아닐 때만) 클래스를 생성해 `null`로 인해 발생하는 버그를 막자.
+
+## 아이템 34
+
+``` ts
+interface Layer {
+	layout: FillLayout | LineLayout | PointLayout;
+	paint: FillPaint | LinePaint | PointPaint;
+}
+```
+이렇게 타입을 설계하면 layout과 paint 속성이 서로 짝이 맞아야 하는 Layer의 의도를 벗어난다.
+
+-> 각각의 타입을 인터페이스로 분리하고 합쳐야 한다. 유효한 타입만을 정의해야 한다.
+
+각각의 유효한 타입을 모델링해야 타입스크립트가 코드의 정확성을 체크하는 데 도움이 된다.
+
+결국 선택적 속성을 추가할 때 해당 속성이 없는 상태와 존재하는 상태가 모두 유효한지, 속성 간의 관계가 깨지지는 않는지를 함께 고려해야 한다.
+
+## 아이템 35
+
+타입의 범위는 **가능한 값의 집합**이라는 것을 명심하자.
+
+이 관점에서 `string`타입의 범위는 너무 넓다.
+
+-> 예를 들어, 1월 ~ 12월 중 하나의 값이 들어와야 하지만 Octobar처럼 오타가 발생해도 정상적으로 동작한다.
+
+string 타입이어도 리터럴 유니온 등 더 좁은 타입을 사용하는 것이 오류를 막을 수 있다.
+
+좁은 타입을 사용해야
+- 다른 곳으로 값이 전달되어도 타입 정보가 유지된다.
+- 해당 타입의 의미를 설명하는 주석을 붙여 넣을 수 있다.
+
+### pluck 예시
+pluck은 객체 배열에서 특정 속성만 뽑는 함수
+
+``` ts
+const albums = [
+  {
+    title: 'Abbey Road',
+    artist: 'The Beatles',
+    releaseDate: new Date(),
+  },
+];
+
+pluck(albums, 'title');
+// ['Abbey Road']
+
+pluck(albums, 'releaseDate');
+// [Date 객체]
+```
+
+`any` 또는 `string`을 사용하면 title, artist, releaseDate가 아닌 어떤 문자열이든 허용된다.
+
+```ts
+function pluck<T>(
+  records: T[],
+  key: string
+) {
+  return records.map(record => record[key]);
+}
+
+pluck(albums, 'releaseDate');
+// T = Album
+```
+`T`는 전달받은 객체 한 개의 타입이다. 타입스크립트는 record가 Album이라는 사실을 알지만, key는 여전히 아무 문자열이나 될 수 있어서 오류가 발생한다.
+
+```ts
+function pluck<T>(
+  records: T[],
+  key: keyof T
+) {
+  return records.map(record => record[key]);
+}
+```
+
+따라서 키를 실제 객체가 가진 키로 제한해야 한다.
+
+-> `keyof T`는 'title' | 'artist' | 'releaseDate'가 된다.
+
+하지만 아직도 타입이 넓다. 반환타입인 `T[keyof T]`는 객체가 가진 속성 타입의 합집합이다. 즉 `string | Date`이다.
+
+``` ts
+function pluck<T, K extends keyof T>(
+  records: T[],
+  key: K
+): T[K][] {
+  return records.map(record => record[key]);
+}
+
+const dates = pluck(albums, 'releaseDate');
+// T = Album
+// K = 'releaseDate'
+// T[K] = Album['releaseDate'] = Date
+```
+
+이 예제에서 제네릭은 함수를 범용적으로 만들기 위해서만이 아니라, **입력한 키에 따라 반환 타입이 달라지는 관계를 정확히 표현하기 위해** 사용된다.
