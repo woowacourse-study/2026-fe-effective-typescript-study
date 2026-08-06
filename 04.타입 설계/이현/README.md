@@ -146,3 +146,164 @@ function extent(nums: Iterable<number>) {
 따라서 먼저 fetch로 값을 가져온 후에 안전한 값으로 인스턴스를 생성하는게 낫다.
 
 > 이부분이 제목과 조금 더 직접적인 연관이 있다. 클래스 내부에서 null처리를 하지말고 외부로 null을 배치하라는 말이다.
+
+## 아이템 34 유니온의 인터페이스보다는 인터페이스의 유니온 사용하기
+
+유니온의 인터페이스 -> interface 안에 있는 속성이 유니온 타입인 경우
+
+인터페이스의 유니온 -> interface | interface
+
+사실 이 아이템에서도 이야기하는 것은 4장의 이전 아이템들과 크게 다르지 않다.
+
+유효하지 않은 상태를 만들지 말라는 것!
+
+중요한 건 인터페이스 안에 유니온 속성이 하나라도 있으면 나쁘다는 뜻이 아니다.
+
+서로 관계가 있는 여러 속성을 각각 독립적인 유니온이나 선택적 속성으로 표현하는 경우에 문제가 있는 것이다.
+
+> Q. 인터페이스의 유니온 사용하기의 대표적인 예시가 태그된 유니온인건가?
+> A. 그렇다
+
+태그된 유니온을 사용할 수 있다면 보통 사용하는 것이 좋다.
+
+---
+
+```ts
+interface Person {
+  name: string;
+  // These will either both be present or not be present
+  placeOfBirth?: string;
+  dateOfBirth?: Date;
+}
+```
+
+아이템 33에서 했던 것처럼
+
+```ts
+interface Person {
+  name: string;
+  birth?: {
+    place: string;
+    date: Date;
+  };
+}
+```
+
+이렇게 바꿀 수도 있지만, 만약 이게 API 응답이라서 구조를 바꾸지 못한다면
+
+> 이 상황 실제로 오늘 백엔드 팀원이랑 API 설계할 때 있었음
+
+`인터페이스의 유니온`을 사용해서 타입을 지정할 수 있음!
+
+```ts
+interface Name {
+  name: string;
+}
+
+interface PersonWithBirth extends Name {
+  placeOfBirth: string;
+  dateOfBirth: Date;
+}
+
+type Person = Name | PersonWithBirth;
+```
+
+이런식으로 바꾸면 됨
+
+> Q. 근데 이렇게 하면 타입의 안정성을 올리기 위해서 수많은 타입을 정의해야 될 수도 있을 것 같은데, 그럼 가독성이 너무 떨어지지 않나? 그리고 단순히 Name이라고 지을 일은 보통 없을 것 같은데 예제의 네이밍이 조금 애매하지는 않나?
+
+## 아이템 35 string 타입보다 더 구체적인 타입 사용하기
+
+> 이거 아주 나한테 유용한 아이템이다. 내가 보통 이런식으로 타입을 정의함
+
+일단 무작정 string 하지말고, 문자 리터럴 타입의 유니온으로 할 수 있으면 하고, Date도 Date 객체로 하는 것이 좋다는 이야기다.
+
+```ts
+function pluck(records: any[], key: string): any[] {
+  return records.map((r) => r[key]);
+}
+```
+
+이 코드를 제네릭을 이용해서 개선하면
+
+```ts
+function pluck<T>(records: T[], key: keyof T) {
+  return records.map((r) => r[key]);
+}
+```
+
+이렇게 해볼 수 있다.
+
+> 솔직히 내가 보기엔 이정도도 훌륭하다고 생각한다. 하지만 저자는 더 나은 방식이 있다고 언급한다.
+
+```ts
+function pluck<T, K extends keyof T>(records: T[], key: K): T[K][] {
+  return records.map((r) => r[key]);
+}
+```
+
+이렇게 하면 문제가 뭘까?
+
+```ts
+type RecordingType = "studio" | "live";
+
+interface Album {
+  artist: string;
+  title: string;
+  releaseDate: Date;
+  recordingType: RecordingType;
+}
+
+function pluck<T>(records: T[], key: keyof T) {
+  return records.map((r) => r[key]);
+}
+
+const albums: Album[] = [];
+
+const dates = pluck(albums, "releaseDate");
+const artists = pluck(albums, "artist");
+```
+
+여기서 dates와 artists는 타입 추론이 이상하게 된다.
+(string | Date)[] 타입이 된다.
+
+왜 추론이 넓게 될까? step by step으로 가보자
+
+```ts
+type AlbumKey = keyof Album;
+// "artist" | "title" | "releaseDate" | "recordingType"
+```
+
+Album의 키는 이렇게 유니온 타입이 된다.
+그렇기 때문에 value도 전체 유니온 타입이 되는 것이다.
+
+value가 될 수 있는 타입은 아래와 같다.
+`string | string | Date | RecordingType`
+
+근데 RecordingType은 문자열 리터럴 타입이어서 string의 부분집합이므로 사라져서 최종적으로는 (string | Date)가 되는 것이다.
+
+그래서 타입을 더 좁히기 위해서 제네릭을 하나 더 쓰는 방식을 사용한다.
+
+```ts
+function pluck<T, K extends keyof T>(records: T[], key: K): T[K][] {
+  return records.map((r) => r[key]);
+}
+```
+
+> 이부분 솔직히 아직 잘 모르겠음
+
+```ts
+const dates = pluck(albums, "releaseDate");
+//    ^? const dates: Date[]
+const artists = pluck(albums, "artist");
+//    ^? const artists: string[]
+const types = pluck(albums, "recordingType");
+//    ^? const types: RecordingType[]
+const mix = pluck(albums, Math.random() < 0.5 ? "releaseDate" : "artist");
+//    ^? const mix: (string | Date)[]
+const badDates = pluck(albums, "recordingDate");
+//                             ~~~~~~~~~~~~~~~
+// Argument of type '"recordingDate"' is not assignable to parameter of type ...
+```
+
+이렇게 하면 놀랍게도 모든 타입이 정확히 추론된다.
