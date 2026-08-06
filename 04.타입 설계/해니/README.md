@@ -146,3 +146,104 @@ number[]만 받으면 진짜 배열만 되는데, Iterable<number>로 받으면 
 -> 매개변수를 그냥 순회만 하는 게 목적이면 Iterable 쓰는 게 더 너그러움
 
 > 정리: 매개변수는 쓰기 편하게 최대한 넓게, 반환값은 분기 처리 필요 없게 최대한 좁고 확정적으로. 둘을 같은 타입 하나로 겸용하면 그 타입 쓰는 모든 곳에 분기 부담이 퍼짐
+
+### 아이템 31. 문서에 타입 정보 쓰지 않기
+
+주석으로 타입 알려주는 것이 왜 나쁘냐?
+
+코드 바뀌어도 주석은 안 따라감.
+사람이 손으로 쓰는 거라 아무도 검증 안 해줘서, 결국 코드랑 다른 얘기하는 주석이 되기 쉬움
+
+```ts
+// 나쁜 예: 주석으로 타입 설명
+// nums는 숫자 배열, 반환값은 숫자
+function sum(nums) { ... }
+
+// 좋은 예: 타입 구문 자체가 설명
+function sum(nums: number[]): number { ... }
+```
+
+타입 구문은 컴파일러가 매번 체크해주니까 코드랑 항상 일치함.
+주석은 타입으로 못 담는 것만 -> 함수 목적, 사용 예시, 왜 이렇게 짰는지 담당하면 됨. 매개변수 하나 부연 설명하고 싶으면 `@param` 쓰면 됨.
+
+> 값 안 바뀐다는 주석은 필요 없나?
+> `readonly` 붙이면 됌. 굳이 주석으로 남길 필요 없음
+
+변수명에 타입 우겨넣는 것도 지양. `ageNum` 대신 `age: number`로 나눠서 쓰면 됨 -> 다만 단위 헷갈리는 숫자는 예외, `temperatureC`, `timeMs`처럼 단위를 이름에 남기는 건 오히려 버그 줄여줌
+
+## 아이템 32. 타입 별칭에 null이나 undefined 포함하지 않기
+
+```ts
+type User = { id: string; name: string } | null;
+```
+
+이렇게 짜면 안 됨.
+-> 이유는 사람이 타입 이름을 읽는 방식 때문임.
+
+> 왜 문제가 되나?
+> `User`라는 이름만 보면 "id, name 있는 사용자"만 떠오르지, "사용자 아닐 수도"는 잘 안 떠오름
+> 결국 이 타입 쓰는 곳에서 null 체크를 깜빡하기 쉬움
+
+타입 체커 입장에서는 상관없음. 별칭을 그대로 펼쳐서 검사하니까. 문제는 사람이 읽을 때임
+
+**해결 방법 - 쓰는 자리에서 null 드러내기**
+
+```ts
+function getUser(id: string): User | null { ... }
+```
+
+이러면 시그니처만 봐도 null 나올 수 있다는 게 바로 보임. 객체 속성 하나가 `null`이나 `undefined`인 건 상관없음
+-> 문제 되는 건 별칭 전체를 감싸는 가장 바깥쪽의 null임
+
+## 아이템 33. 타입 주변에 null 값 배치하기
+
+null 여부를 안쪽 여기저기 흩어놓지 말고 바깥 경계 한 곳으로 몰아넣자.
+
+```ts
+function extent(nums: Iterable<number>) {
+  let min, max;
+  for (const num of nums) {
+    if (!min) {
+      min = num;
+      max = num;
+    } else {
+      min = Math.min(min, num);
+      max = Math.max(max, num);
+      //             ~~~ 'number | undefined' 형식의 인수는
+      //                 'number' 형식의 매개변수에 할당될 수 없습니다.
+    }
+  }
+  return [min, max];
+}
+```
+
+사람은 min이 있으면 max도 당연히 있다는 거 직관적으로 앎. 근데 타입스크립트는 둘을 독립된 변수로 봐서 그 관계를 모름
+
+> 실제 가능한 조합은?
+> 컴파일러 입장에선 네 가지(둘 다 undefined / min만 있음 / max만 있음 / 둘 다 있음) 다 가능해 보임
+> 근데 진짜 나올 수 있는 건 "둘 다 undefined" 아니면 "둘 다 있음" 두 가지뿐임
+
+하나의 튜플로 묶으면 잘못된 조합 자체가 안 만들어짐
+
+```ts
+function extent(nums: Iterable<number>) {
+  let minMax: [number, number] | null = null;
+  for (const num of nums) {
+    if (!minMax) {
+      minMax = [num, num];
+    } else {
+      const [min, max] = minMax;
+      minMax = [Math.min(min, num), Math.max(max, num)];
+    }
+  }
+  return minMax;
+}
+```
+
+null 될 수 있는 지점을 `minMax` 하나로 모아놨으니, 쓰는 쪽에서는 딱 한 번만 체크(`!` 단언이든 if든) 하면 끝남
+
+클래스도 같은 함정 있음. 프로퍼티 여러 개를 fetch로 채워야 한다고 일단 `null`로 초기화해두고 나중에 `init()`으로 채우는 방식은 피하기 -> 인스턴스가 "덜 채워진 상태"랑 "다 채워진 상태"를 둘 다 가질 수 있게 되고, 쓰는 쪽에서 매번 채워졌는지 신경 써야 함
+
+> 정리
+> fetch 먼저 다 끝내고, 값 다 준비된 다음에 인스턴스 생성하기
+> null 처리를 클래스 내부가 아니라 바깥(생성 전 시점)으로 미는 것 -> 이게 이 아이템 제목이 말하는 "주변에 배치하기"임
