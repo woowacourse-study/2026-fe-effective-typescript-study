@@ -147,12 +147,14 @@ number[]만 받으면 진짜 배열만 되는데, Iterable<number>로 받으면 
 
 > 정리: 매개변수는 쓰기 편하게 최대한 넓게, 반환값은 분기 처리 필요 없게 최대한 좁고 확정적으로. 둘을 같은 타입 하나로 겸용하면 그 타입 쓰는 모든 곳에 분기 부담이 퍼짐
 
+---
+
 ### 아이템 31. 문서에 타입 정보 쓰지 않기
 
 주석으로 타입 알려주는 것이 왜 나쁘냐?
 
 코드 바뀌어도 주석은 안 따라감.
-사람이 손으로 쓰는 거라 아무도 검증 안 해줘서, 결국 코드랑 다른 얘기하는 주석이 되기 쉬움
+사람이 손으로 쓰는 거라 아무도 검증 안 해줘서, 결국 코드랑 다른 얘기하는 주석이 되기 쉬움ㅈ모
 
 ```ts
 // 나쁜 예: 주석으로 타입 설명
@@ -171,7 +173,9 @@ function sum(nums: number[]): number { ... }
 
 변수명에 타입 우겨넣는 것도 지양. `ageNum` 대신 `age: number`로 나눠서 쓰면 됨 -> 다만 단위 헷갈리는 숫자는 예외, `temperatureC`, `timeMs`처럼 단위를 이름에 남기는 건 오히려 버그 줄여줌
 
-## 아이템 32. 타입 별칭에 null이나 undefined 포함하지 않기
+---
+
+### 아이템 32. 타입 별칭에 null이나 undefined 포함하지 않기
 
 ```ts
 type User = { id: string; name: string } | null;
@@ -195,7 +199,9 @@ function getUser(id: string): User | null { ... }
 이러면 시그니처만 봐도 null 나올 수 있다는 게 바로 보임. 객체 속성 하나가 `null`이나 `undefined`인 건 상관없음
 -> 문제 되는 건 별칭 전체를 감싸는 가장 바깥쪽의 null임
 
-## 아이템 33. 타입 주변에 null 값 배치하기
+---
+
+### 아이템 33. 타입 주변에 null 값 배치하기
 
 null 여부를 안쪽 여기저기 흩어놓지 말고 바깥 경계 한 곳으로 몰아넣자.
 
@@ -247,3 +253,127 @@ null 될 수 있는 지점을 `minMax` 하나로 모아놨으니, 쓰는 쪽에�
 > 정리
 > fetch 먼저 다 끝내고, 값 다 준비된 다음에 인스턴스 생성하기
 > null 처리를 클래스 내부가 아니라 바깥(생성 전 시점)으로 미는 것 -> 이게 이 아이템 제목이 말하는 "주변에 배치하기"임
+
+### 아이템 34. 인터페이스를 유니온으로 묶기 vs 필드를 유니온으로 만들기
+
+이름이 헷갈리는데 둘을 구분하면
+
+- **유니온의 인터페이스**: `interface` 하나 안에서 속성 값이 `A | B | C`인 경우
+- **인터페이스의 유니온**: `interface1 | interface2` 처럼 인터페이스 자체를 유니온으로 묶는 경우
+
+책 결론은 후자를 쓰라는 거임.
+이유는 전자는 "말이 안 되는 조합"을 타입 시스템이 못 막음.
+
+```ts
+interface Layer {
+  layout: FillLayout | LineLayout | PointLayout;
+  paint: FillPaint | LinePaint | PointPaint;
+}
+```
+
+이렇게 두면 `layout`이 `FillLayout`인데 `paint`는 `LinePaint`인 조합도 타입 에러 없이 통과됨. 근데 실제로는 layout이랑 paint가 항상 짝을 이뤄야 하는 관계임. 타입에 그 관계가 전혀 안 드러나 있음.
+
+```ts
+interface FillLayer {
+  layout: FillLayout;
+  paint: FillPaint;
+}
+interface LineLayer {
+  layout: LineLayout;
+  paint: LinePaint;
+}
+interface PointLayer {
+  layout: PointLayout;
+  paint: PointPaint;
+}
+type Layer = FillLayer | LineLayer | PointLayer;
+```
+
+이렇게 쪼개고 유니온으로 다시 합치면, "유효한 조합"만 타입으로 존재하게 됨. 잘못된 조합은 애초에 만들 수가 없어짐.
+
+포인트는 "필드 안에 유니온이 있으면 무조건 나쁘다"가 아님. 서로 묶여서 움직이는 속성들을 각자 따로 유니온/옵셔널로 풀어놨을 때만 문제가 됨.
+
+선택적 속성(`?`) 쓸 때도 똑같은 함정 있음.
+
+```ts
+interface Person {
+  name: string;
+  placeOfBirth?: string;
+  dateOfBirth?: Date;
+}
+```
+
+이거 두 필드가 항상 같이 있거나 같이 없어야 하는데, 타입만 보면 "둘 다 있음 / 하나만 있음 / 둘 다 없음" 네 가지 조합이 전부 유효해 보임. 실제로 유효한 건 두 가지뿐인데.
+
+```ts
+interface Name {
+  name: string;
+}
+interface PersonWithBirth extends Name {
+  placeOfBirth: string;
+  dateOfBirth: Date;
+}
+type Person = Name | PersonWithBirth;
+```
+
+`extends`는 상속이라기보다 "얘도 Name의 속성은 포함하고 있다"는 표시 정도로 보면 됨. 이렇게 두면 "이름만 있음" / "이름+출생 정보 다 있음" 두 상태만 존재하고, "출생지만 있고 날짜는 없음" 같은 애매한 상태는 타입 레벨에서 아예 안 생김.
+
+이 패턴 제일 흔한 형태가 태그된 유니온(discriminated union)임. 각 인터페이스에 `kind: 'fill'` 같은 리터럴 태그 하나씩 박아두면, `switch (layer.kind)`만으로 타입스크립트가 알아서 좁혀줌. 필드 여러 개가 세트로 움직인다 싶으면 옵셔널로 흩뿌리지 말고 객체로 묶어서 유니온 만드는 게 국룰.
+
+## 아이템 35. string은 생각보다 넓은 타입임
+
+타입 = 그 타입에 들어올 수 있는 값의 집합. 이 관점에서 보면 `string`은 사실상 "아무거나"에 가까움.
+
+열두 달 중 하나를 받고 싶어서 필드 타입을 `string`으로 뒀다 치면, `"Octobar"` 같은 오타도 컴파일 통과함. `string`은 `any`랑 비슷한 급으로 취급해도 될 정도로 헐렁한 타입임.
+
+리터럴 유니온으로 좁히면 얻는 게 두 가지임.
+
+- 값이 다른 함수로 넘어가도 타입 정보가 안 죽고 따라감
+- 타입 자체에 주석 달듯 의미를 붙일 수 있음 (`type RecordingType = 'studio' | 'live'`)
+
+### pluck 함수로 보는 좁히기 단계
+
+객체 배열에서 특정 키 값만 뽑는 함수 만든다고 하면.
+
+```ts
+function pluck(records: any[], key: string): any[] {
+  return records.map((r) => r[key]);
+}
+```
+
+`any`, `string` 둘 다 문제. `key`에 존재하지도 않는 문자열을 넣어도 안 걸림.
+
+```ts
+function pluck<T>(records: T[], key: keyof T) {
+  return records.map((r) => r[key]);
+}
+```
+
+`keyof T`로 바꾸면 최소한 "존재하는 키만" 넣을 수 있게 됨. 근데 반환 타입을 보면 여전히 헐렁함. `keyof T`가 유니온이니까 반환값도 그 유니온에 걸리는 모든 값 타입의 합집합이 되어버림. `Album`이 `artist: string`, `title: string`, `releaseDate: Date`, `recordingType: 'studio' | 'live'`로 이루어져 있다면
+
+```
+T[keyof T] = string | string | Date | ('studio' | 'live')
+```
+
+여기서 `'studio' | 'live'`는 `string`의 부분집합이라 그냥 `string`에 흡수돼버림. 결국 `(string | Date)[]`. `key`로 뭘 넣었는지랑 상관없이 반환 타입이 뭉뚱그려짐.
+
+```ts
+function pluck<T, K extends keyof T>(records: T[], key: K): T[K][] {
+  return records.map((r) => r[key]);
+}
+```
+
+제네릭을 하나 더 씀. 여기서 `K`는 "이번 호출에서 실제로 넘긴 그 키 하나"로 고정됨 (유니온 전체가 아니라). 그래서
+
+```ts
+pluck(albums, "releaseDate"); // Date[]
+pluck(albums, "artist"); // string[]
+pluck(albums, "recordingType"); // ('studio' | 'live')[]
+pluck(albums, "recordingDate"); // 컴파일 에러, 애초에 없는 키
+```
+
+호출 시점에 넘긴 키 값에 따라 반환 타입이 그때그때 정확하게 따라옴. 여기서 제네릭 `K`의 역할은 "함수를 여러 타입에 재사용 가능하게"가 아니라, "입력한 키와 반환 타입 사이의 의존 관계를 타입 레벨에 그대로 새기는 것"에 더 가까움.
+
+## 두 아이템을 관통하는 것
+
+34는 "서로 묶인 필드들을 인터페이스 단위로 쪼개서 유니온으로 재조립하라"는 얘기고, 35는 "필드 하나의 타입도 실제 가능한 값 집합만큼만 좁혀라"는 얘기임. 방향은 다르지만 둘 다 "유효하지 않은 상태를 애초에 표현 불가능하게 만들어서, 런타임 체크 대신 컴파일러가 잡아주게 하자"로 수렴함.
