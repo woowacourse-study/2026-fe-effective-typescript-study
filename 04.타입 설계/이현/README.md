@@ -307,3 +307,98 @@ const badDates = pluck(albums, "recordingDate");
 ```
 
 이렇게 하면 놀랍게도 모든 타입이 정확히 추론된다.
+
+## 아이템 36 특수값에는 별도의 타입 사용하기
+
+JS에서 -1은 특수한 값으로 쓰인다. 단순 숫자이지만, 그 의미를 지니기 때문에 특수한 타입으로 만들어 주어야한다.
+
+양수만 들어올 수 있는 변수에 뭔가 특수한 값을 처리하기 위해 음수를 사용한다고 하면, 우리는 잘 받아들일 수 있지만 어디가에서 버그가 터질 수 있다.
+
+따라서 이런 것들은 명확하게 null같은 값으로 처리를 해주어야한다.
+
+네트워크 통신 같은 것도 지연됨, 오류같은 상태를 null이나 undefined로 처리하기보다는 태그된 유니온을 쓰는 것이 낫다. 아마도 모델링한다고 하면 이런식?
+
+```ts
+interface NetworkError {
+  state: "error";
+  // ...
+}
+
+interface NetworkDelayed {
+  state: "delay";
+  // ...
+}
+```
+
+중요한건 null을 써라 쓰지말라가 아니다.
+특수한 상황을 다뤄야 한다면 그 상황에 맞는 최선의 타입을 선택하라는 것이다.
+
+없으면 없다고 null, 에러는 에러라고 표시하는 "error"처럼
+
+## 아이템 37 선택적 속성 지양하기
+
+Optional을 사용하면 문제가 있다.
+바로 그 값이 없을 때의 처리를 값이 사용되는 곳마다 매번 처리를 해주어야 한다는 것이다.
+특히 선택적 속성이 없을 때 기본값을 설정해놨을 때 실수로 선택적 속성을 적어주지 않은 곳에서는 의도하지 않은 동작이어도 그걸 찾기가 힘들다.
+
+그래서 이 책에서 제시하는 방법은 어차피 기본값이 있다면, 최초에 정규화를 하라는 것이다.
+
+```ts
+interface InputAppConfig {
+  darkMode: boolean;
+  // ... other settings ...
+  /** default is imperial */
+  unitSystem?: UnitSystem;
+}
+interface AppConfig extends InputAppConfig {
+  unitSystem: UnitSystem; // required
+}
+```
+
+이렇게 처음부터 정규화를 해놓고 쓰면 사용하는 곳에서 기본값 처리를 해줄 필요가 없다.
+이렇게 하는 것 대신에
+`type AppConfig = Required<InputAppConfig>`로 할 수도 있다.
+
+> Required<T>는 그 타입의 모든 속성을 required로 만들어줌. 기존에 optional인 것들도!
+
+Optional을 그럼 대체 언제 써야하냐?
+
+- 이미 존재하는 API를 모델링하거나 API를 수정할 때
+- 실제로 선택적인 경우 (middleName 같은 경우)
+
+## 아이템 38 같은 타입의 매개변수를 반복하지 않기
+
+drawRect(25,50,75,100,1); 이 코드만 보고 얘가 뭘 하는지 알 수 있음? 절대 ㄴ
+
+다같은 number타입이라 순서를 바꾸어 입력해도 타입 체크는 작동하지 않는다.
+
+```ts
+interface Point {
+  x: number;
+  y: number;
+}
+interface Dimension {
+  width: number;
+  height: number;
+}
+function drawRect(topLeft: Point, size: Dimension, opacity: number) {
+  // ...
+}
+```
+
+이렇게 완전히 분리시켜 받는다면 잘못된 값을 받기가 힘들어진다.
+
+```ts
+interface DrawRectParams extends Point, Dimension {
+  opacity: number;
+}
+function drawRect(params: DrawRectParams) {
+  /* ... */
+}
+
+drawRect({ x: 25, y: 50, width: 75, height: 100, opacity: 1.0 });
+```
+
+이렇게 1개의 객체로 만드는 것도 방법이다.
+
+결론은 직관적이고 사용하기 쉬운 매개변수 타입을 설계하라는 것이다.
