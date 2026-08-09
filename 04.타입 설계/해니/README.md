@@ -377,3 +377,82 @@ pluck(albums, "recordingDate"); // 컴파일 에러, 애초에 없는 키
 ## 두 아이템을 관통하는 것
 
 34는 "서로 묶인 필드들을 인터페이스 단위로 쪼개서 유니온으로 재조립하라"는 얘기고, 35는 "필드 하나의 타입도 실제 가능한 값 집합만큼만 좁혀라"는 얘기임. 방향은 다르지만 둘 다 "유효하지 않은 상태를 애초에 표현 불가능하게 만들어서, 런타임 체크 대신 컴파일러가 잡아주게 하자"로 수렴함.
+
+---
+
+### 아이템 36. 특수값에는 별도의 타입 사용하기
+
+`find` 함수가 못 찾으면 -1을 리턴하는 관례, 어디서나 본 패턴이다
+
+```ts
+function find(arr: number[], target: number): number {
+  // 못 찾으면 -1 리턴
+}
+```
+
+문제는 반환 타입이 그냥 `number`라는 점이다. -1이 "없음"을 뜻한다는 정보는 코드 어디에도 남지 않는다. 호출부에서 `arr[idx + 1]`처럼 바로 써버리면 인덱스 -1 + 1 = 0에서 엉뚱한 값을 꺼내온다. 타입 체커는 이걸 막을 방법이 없다, 애초에 number는 다 number이기 때문이다.
+
+해결방법은 "없음"이라는 상태를 값이 아니라 타입으로 표현하는 것이다.
+
+```ts
+type NetworkState =
+  | { state: "loading" }
+  | { state: "error"; error: Error }
+  | { state: "success"; data: string };
+```
+
+세 상태를 유니온으로 쪼개면 `data`는 success일 때만 존재한다는 게 타입 레벨에서 강제된다. null 대신 태그된 유니온을 쓰라는 얘기가 아니라, 특수한 케이스가 하나 생기면 그 케이스를 표현할 전용 타입을 만들라는 게 요지다.
+
+---
+
+### 아이템 37. 선택적 속성 지양하기
+
+```ts
+interface Config {
+  darkMode: boolean;
+  unitSystem?: UnitSystem;
+}
+```
+
+`unitSystem`이 없을 때 "imperial"을 기본값으로 쓴다고 치면, 이 필드를 참조하는 모든 코드가 `?? "imperial"`을 반복해야 한다. 한 곳이라도 빠뜨리면 그 자리만 다른 동작을 하는데, 타입 체커는 아무 말도 안 한다.
+
+정답은 생성 시점에 정규화. optional은 입력 단계에만 두고, 내부에서 쓰는 타입은 required로 못박는다
+
+```ts
+interface InputConfig {
+  darkMode: boolean;
+  unitSystem?: UnitSystem;
+}
+type Config = Required<InputConfig>;
+```
+
+optional을 남겨둬도 되는 경우는 딱 두 가지. 이미 존재하는 API 형태를 그대로 따라야 할 때, 그리고 값이 진짜 있어도 그만 없어도 그만일 때(중간 이름 같은 것?) 뿐이다. optional 필드가 하나 늘 때마다 상태 조합은 배로 불어난다는 걸 기억할 것!
+
+---
+
+### 아이템 38. 같은 타입의 매개변수를 반복하지 않기
+
+```ts
+drawRect(25, 50, 75, 100, 1);
+```
+
+이 호출만 보고 무엇을 그리는지 맞출 수 있는 사람은 없다. 다섯 인자 전부 number라서, 좌표와 크기 순서를 통째로 바꿔 넣어도 컴파일은 통과한다. 버그는 런타임에 화면을 보고서야 발견된다.
+
+의미가 다른 값은 타입으로 분리해야 순서 실수가 컴파일 타임 에러가 된다
+
+```ts
+interface DrawRectParams {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  opacity: number;
+}
+function drawRect(params: DrawRectParams) {
+  /* ... */
+}
+
+drawRect({ x: 25, y: 50, width: 75, height: 100, opacity: 1.0 });
+```
+
+객체 하나로 묶는 순간 인자 순서라는 개념 자체가 사라진다. 매개변수가 서너 개를 넘어가면 리팩터링할 타이밍이라고 보면 된다.
