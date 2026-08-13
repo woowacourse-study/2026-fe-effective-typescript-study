@@ -694,3 +694,124 @@ export interface CreateCommentRequest {
 ```
 
 -> 결국 **타입은 내 머릿속이 아니라 도메인에서 온다.**
+
+---
+
+### 아이템 43. `any` 타입은 가능한 한 좁은 범위에서만 사용하기
+
+`any`를 쓴다는 건 그 지점의 에러를 지우는 게 아니라, **그 지점부터 타입 정보를 흘려보내는 것**에 가까움.
+→ 그래서 어디에 붙이느냐가 곧 얼마나 넓게 오염되느냐가 됨.
+
+```tsx
+declare function loadConfig(): Config;
+declare function applyTheme(theme: Theme): void;
+
+const config = loadConfig();
+applyTheme(config); // Config는 Theme에 할당 불가
+```
+
+여기서 에러를 없애는 방법은 두 가지
+
+**A. 변수 선언을 any로**
+
+```jsx
+const config: any = loadConfig();
+
+applyTheme(config);   // 통과
+config.verison;       // 오타인데 통과 <- 체커가 아예 꺼짐
+```
+
+**B. 전달하는 그 자리에서만 as any**
+
+```tsx
+const config = loadConfig(); // Config 유지
+
+applyTheme(config as any); // 통과
+config.verison; // 여기선 여전히 잡힘
+```
+
+**B**A는 `config`를 참조하는 모든 코드가 무방비가 되지만, B는 인자로 넘기는 그 표현식 하나에만 효력이 있음.
+같은 타입 체크 끄기라도 A는 **변수의 주기 전체**, B는 **한 부분이** 해당사항임.
+
+#### 반환 타입을 명시해서 밖으로 새는 걸 막기
+
+함수 안에서 `any`를 썼는데 반환 타입을 추론에 맡기면, 그 `any`가 **호출자 쪽으로 그대로 흘러나감.**
+
+```tsx
+// 반환 타입이 any로 추론됨 - 호출하는 모든 곳이 오염
+function getUser(id: string) {
+  const raw = fetchFromLegacyApi(id) as any;
+  return raw.data;
+}
+
+// 경계에서 막음
+function getUser(id: string): User {
+  const raw = fetchFromLegacyApi(id) as any;
+  return raw.data;
+}
+```
+
+TS가 알아서 추론해준다고 해도 **함수 시그니처는 명시하는 편이 좋음.** 스코프를 좁힌다는 관점의 연장선이다.
+
+#### 객체는 문제되는 프로퍼티만 단언
+
+```tsx
+// 나머지 필드까지 전부 체크 해제
+const settings: Settings = {
+  retryCount: 3,
+  logger: customLogger,
+  timeout: 1000,
+} as any;
+
+// 문제가 있는 곳만
+const settings: Settings = {
+  retryCount: 3,
+  logger: customLogger as any,
+  timeout: 1000,
+};
+```
+
+객체 전체를 `as any` 하면 나머지 프로퍼티의 오타랑 타입 불일치도 같이 통과함.
+
+---
+
+### 아이템 44. `any` 타입을 구체적으로 변형해서 사용하기
+
+#### `any`는 너무 큼
+
+`any`는 모든 값임. 그런데 실제로 모르는 건 대개 **일부임.**
+→ 배열인 건 아는데 원소를 모른다, 함수인 건 아는데 인자를 모른다 같은 느낌
+
+그렇다면 아는 만큼은 타입에 남겨야 함
+
+```tsx
+function getLength(array: any) {
+  return array.length; // 오타든 뭐든 다 통과, 반환 타입도 any
+}
+
+function getLength(array: any[]) {
+  return array.length;
+}
+```
+
+`any[]`로만 바꿔도
+
+- 함수 본문의 `array.length`가 `number`로 체크됨
+- 반환 타입이 `number`로 추론됨
+- 호출할 때 인자가 배열인지 검사됨
+
+#### 원소 타입이 안 중요하면 `unknown[]`
+
+```tsx
+function hasItems(list: any[]) {
+  const first = list[0]; // any -> 여기서부터 다시 전염
+  return list.length > 0;
+}
+
+function hasItems(list: unknown[]) {
+  const first = list[0]; // unknown -> 쓰려면 좁혀야 함
+  return list.length > 0;
+}
+```
+
+`any[]`는 원소를 꺼내는 순간 다시 `any`가 됨. 원소를 실제로 안 쓸 거라면 `unknown[]`이 더 나음.
