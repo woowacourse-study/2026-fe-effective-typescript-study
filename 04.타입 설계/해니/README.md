@@ -752,6 +752,7 @@ function getUser(id: string): User {
 ```
 
 TS가 알아서 추론해준다고 해도 **함수 시그니처는 명시하는 편이 좋음.** 스코프를 좁힌다는 관점의 연장선이다.
+아
 
 #### 객체는 문제되는 프로퍼티만 단언
 
@@ -815,3 +816,89 @@ function hasItems(list: unknown[]) {
 ```
 
 `any[]`는 원소를 꺼내는 순간 다시 `any`가 됨. 원소를 실제로 안 쓸 거라면 `unknown[]`이 더 나음.
+
+---
+
+### 아이템 45. 함수 안으로 타입 단언문 감추기
+
+- 함수의 모든 부분을 안전한 타입으로 구현하는 것이 이상적이지만, 불필요한 예외 상황까지 고려해 가며 타입 정보를 힘들게 구성할 필요는 없음.
+- 함수 내부에는 타입 단언을 쓰고, 함수 외부로 드러나는 타입 정의를 정확히 명시하는 정도가 적절함.
+- 프로젝트 전반에 위험한 단언문이 드러나 있는 것보다, 제대로 타입이 정의된 함수 안으로 감추는 것이 더 좋은 설계임.
+
+```ts
+function shallowObjectEqual<T extends object>(a: T, b: T): boolean {
+  for (const [k, aVal] of Object.entries(a)) {
+    if (!(k in b) || aVal !== (b as any)[k]) {
+      // 단언이 없으면: 'string'은 'T'의 인덱스로 쓸 수 없다는 오류
+      return false;
+    }
+  }
+  return Object.keys(a).length === Object.keys(b).length;
+}
+```
+
+`k in b`로 확인했으므로 논리적으로 안전하다.
+-> 객체 순회와 단언문이 코드에 직접 들어가는 것보다 **별도의 함수로 분리**해 내는 것이 훨씬 좋은 설계다.
+(`cacheLast`처럼 반환 함수를 `as unknown as T`로 단언하는 경우도 같은 패턴이다.)
+
+- 안전하지 않은 단언이 필요하다면 올바른 시그니처를 가진 함수 안에 숨김.
+- 구현부의 타입 오류를 고치려고 함수 시그니처를 타협하지 않음.
+- 단언이 왜 타당한지 설명하고, 철저히 테스트함.
+
+---
+
+### 아이템 46. 타입을 모르는 경우 any 대신 unknown 사용하기
+
+`any`가 위험한 이유는 두 성질을 동시에 갖기 때문이다.
+
+1. 어떠한 타입이든 `any`에 할당 가능함.
+2. `any`는 어떠한 타입으로도 할당 가능함.
+
+한 집합이 다른 모든 집합의 부분집합이면서 동시에 상위집합일 수는 없으므로 타입 시스템과 상충하고, 타입 체커가 무용지물이 된다.
+
+#### 타입을 모르는 값의 반환 타입
+
+```ts
+function parseYAML(yaml: string): any {
+  /* ... */
+}
+
+const book = parseYAML(`name: Wuthering Heights`);
+alert(book.title); // 오류 없음 -> 런타임에 undefined
+book("read"); // 오류 없음 -> 런타임에 예외
+```
+
+함수의 반환값에 타입 선언을 강제할 수 없어, 호출한 곳에서 선언을 생략하면 사용되는 곳마다 오류가 난다.
+차라리 `unknown`을 반환하는 것이 안전하다.
+
+```ts
+function safeParseYAML(yaml: string): unknown {
+  return parseYAML(yaml);
+}
+const book = safeParseYAML(`...`);
+alert(book.title); // ~~~~ 개체가 'unknown' 형식입니다
+```
+
+> 제네릭(`safeParseYAML<T>(yaml): T`)은 대안이 아니다. 결국 타입 단언과 같은 효과인데 위험이 숨겨져 더 나쁘다.
+
+#### `unknown` : 원하는 타입으로 변환
+
+그대로 쓰는 타입이 아니라 변환 후 사용한다.
+
+1. 타입 단언 `as Book`
+2. 사용자 정의 타입 가드 `val is Book`
+3. `instanceof`
+
+```ts
+function isBook(val: unknown): val is Book {
+  return (
+    typeof val === "object" && val !== null && "name" in val && "author" in val
+  );
+}
+```
+
+결론!
+
+- `unknown`은 `any` 대신 쓸 수 있는 타입 안전한 타입. **값이 있지만 타입을 모를 때** 사용한다.
+- 사용자가 타입 단언, 타입 체크를 하도록 **강제**하려면 `unknown`을 쓴다.
+- `{}`, `object`, `unknown`의 차이를 이해한다.
