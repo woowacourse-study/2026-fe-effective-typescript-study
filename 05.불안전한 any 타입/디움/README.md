@@ -82,3 +82,156 @@ export async function fetchPeak(
 제네릭`<T>`를 사용하는 거보다 `unknown`을 사용하자. 제네릭을 사용하면 안전해 보이지만 이것 또한 타입 단언과 다를 바 없다.
 
 일반적인 상황에서는 `unknown`을 사용하되, `null, undefined`를 사용하지 않는 경우에만 `{}`를 사용하면 된다.
+
+## 아이템 47
+
+몽키 패치란 런타임에 객체에 속성을 추가하는 것. 즉, 원래 없던 속성을 기존 객체에 추가하는 것이다.
+
+사실 몽키 패치를 사용해야 하는 경우가 있는지는 잘 모르겠다.
+
+> [!note] 
+> 1. 서버가 HTML에 초기 데이터를 삽입할 때
+> 2. 오래된 외부 스크립트가 전역 객체를 제공할 때
+
+이런 경우가 있지만 요즘 React/Next를 사용할 때 몽키 패치를 사용할 일은 거의 없다고 보면 된다.
+
+혹시 사용을 하게 된다면 간단하게 `as any` 타입 단언을 사용하지 말고 별도의 객체로 분리하거나 **타입 보강**을 사용하면 된다.
+
+## 아이템 48
+
+> **TypeScript의 타입 검사를 통과했다고 해서 런타임 안전성이 완전히 보장되는 것은 아니다.**
+
+무결성이 깨졌다는 것은 정적 타입과 실제 런타임 값이 달라졌다는 것을 의미한다.
+
+```ts
+const xs = [1, 2, 3];
+const x = xs[3];
+
+// 정적 타입: number
+// 런타임 값: undefined
+```
+
+###  대표적인 무결성 함정
+
+#### `any`
+
+`any`는 타입 검사를 무효화한다.
+
+```ts
+function logNumber(x: number) {
+  console.log(x.toFixed());
+}
+
+const value: any = "hello";
+logNumber(value); // 런타임 오류
+```
+
+가능하면 `unknown` 사용하거나,  `any`가 필요하면 사용 스코프를 제한해야 한다.
+
+#### 타입 단언과 타입 가드
+
+```ts
+const value: number | null = null;
+logNumber(value as number); // 타입 오류만 제거
+```
+
+`as` 또한 타입 검사를 무효화하기 때문에 런타임에서 오류가 발생한다.
+
+ -> 조건문을 통해 타입 좁히기를 수행하자
+
+#### 배열과 객체 조회
+
+TypeScript는 인덱스가 실제로 존재하는지 확인하지 않는다.
+
+```ts
+const names: Record<string, string> = {
+  "007": "James Bond",
+};
+
+const name = names["008"];
+// 정적 타입: string
+// 런타임 값: undefined
+```
+
+값의 타입에 명시적으로 `undefined`를 추가하거나
+
+```ts
+const names: Record<string, string | undefined> = {};
+```
+
+또는 다음 옵션을 사용한다.
+
+```ts
+{
+  "noUncheckedIndexedAccess": true
+}
+```
+
+#### 클래스 계층의 이중변동성
+
+자식 클래스가 부모보다 좁은 매개변수를 받도록 재정의해도 TypeScript가 허용할 수 있다.
+
+```ts
+class Parent {
+  foo(value: string | number) {}
+}
+
+class Child extends Parent {
+  foo(value: number) {
+    value.toFixed();
+  }
+}
+
+const parent: Parent = new Child();
+parent.foo("hello"); // 타입 오류 없음, 런타임 실패
+```
+
+자식 메서드의 시그니처를 부모와 동일하게 유지해야 한다.
+
+#### 배열·객체의 가변성
+
+```ts
+function addAnimal(animals: Animal[]) {
+  animals.push(new Fox());
+}
+
+const hens: Hen[] = [new Hen()];
+addAnimal(hens); // Hen[]에 Fox가 들어감
+```
+
+`Hen[]`을 `Animal[]`로 취급하는 것은 읽기만 할 때는 괜찮지만, 수정하면 문제가 된다.
+
+```ts
+function inspectAnimals(animals: readonly Animal[]) {
+  // animals.push(...) 불가능
+}
+```
+
+함수의 매개변수를 변경하지 않도록 `readonly` 를 추가하거나, 요소를 직접 추가하게 하는 대신 새로운 값을 반환하도록 해야 한다.
+
+#### 할당 가능성과 선택적 속성
+
+TypeScript 객체 타입은 선언된 속성만 가질 수 있는 타입이 아니다.(구조적 타이핑)
+
+```ts
+interface Person {
+  name: string;
+}
+
+interface AgedPerson extends Person {
+  age?: number;
+}
+
+const original = {
+  name: "Kim",
+  age: "42 years",
+};
+
+const person: Person = original;     // 추가 속성 age가 가려짐
+const aged: AgedPerson = person;     // 허용됨
+aged.age?.toFixed();                 // 실제 age는 string
+```
+
+aged로 할당하는 부분에서 무결성이 깨진다.
+
+-> 선택적 속성을 무분별하게 추가하지 않기, 충돌하기 쉬운 `type`, `value`, `age`보다 구체적인 이름 사용, 서로 다른 의미라면 `ageInYears`, `formattedAge`처럼 분리
