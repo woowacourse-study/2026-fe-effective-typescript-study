@@ -154,3 +154,91 @@ type Comparable<T> =
 TS에서 분배가 일어나려면 `T extends U ? X : Y`형태여야 한다. 왼쪽이 가공되지 않은 타입 매개변수 그 자체여야 한다.
 
 하지만 튜플로 감싸게 되면 `T`자체가 아닌 가공된 `[T]`라는 튜플 타입이 되어버려 분배 조건을 만족하지 않는다.
+
+## 아이템 54
+
+```ts
+interface Checkbox {
+	id: string;
+	checked: boolean;
+	[key: string]: unknown;
+}
+
+interface Checkbox {
+	id: string;
+	checked: boolean;
+	[key: `data-${string}`]: unknown;
+}
+```
+
+문자열을 인덱스 타입으로 사용하면 잉여 속성 체크의 이점을 모두 잃게 되고, 사용자의 의도와 맞지 않는 동작이 허용되는 오류가 발생한다.
+
+## 아이템 55
+
+순수 함수에 단위 테스트를 작성하는 것처럼, 복잡한 타입과 타입 선언에도 테스트를 작성하라는 얘기이다.
+
+### 1. 호출만 테스트하지 말자
+
+```ts
+declare function map<U, V>(
+  array: U[],
+  fn: (value: U) => V
+): V[];
+
+map(['2017', '2018'], value => Number(value));
+```
+호출만 하면 결과가 제대로 추론되는지는 검사하지 않는다 -> 반환 타입까지 검사해야 한다.
+
+```ts
+// 예시
+import { expectTypeOf } from 'expect-type';
+
+const result = map(
+  ['2017', '2018'],
+  value => Number(value)
+);
+
+expectTypeOf(result).toEqualTypeOf<number[]>();
+```
+
+### 2. 할당 가능성을 체크해라
+
+```ts
+function assertType<T>(value: T) {}
+
+const n = 12;
+assertType<number>(n); // 통과
+```
+
+n의 타입은 리터럴 `12`지만 통과한다.
+
+
+### 3. 콜백은 내부에서 추론되는 타입도 검사한다
+
+콜백을 받는 API라면 최종 반환 타입만 보지 말고, 콜백 매개변수가 올바르게 추론되는지도 확인해야 한다.
+
+```ts
+expectTypeOf(
+  map(
+    ['john', 'paul'],
+    function (name, index, array) {
+      expectTypeOf(name).toEqualTypeOf<string>();
+      expectTypeOf(index).toEqualTypeOf<number>();
+      expectTypeOf(array).toEqualTypeOf<string[]>();
+      expectTypeOf(this).toEqualTypeOf<string[]>();
+
+      return name.length;
+    }
+  )
+).toEqualTypeOf<number[]>();
+```
+
+검사할 대상
+- 함수의 반환 타입
+- 콜백의 각 매개변수 타입
+- 제네릭 타입 추론 결과
+- API에 포함된다면 `this` 타입
+
+직접 만든 타입을 테스트하려면 vitest, expect-type, tsd 같은 라이브러리를 사용하는 것이 좋다.
+
+타입의 구조뿐 아니라 표시 형식까지 테스트하려면 eslint-plugin-expect-type을 사용하자.
