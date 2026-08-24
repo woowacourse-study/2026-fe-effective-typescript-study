@@ -158,3 +158,105 @@ function double<T extends string | number>(
 아이템 52의 패턴을 적용할 수 없는 경우를 설명한다.
 
 애초에 매개변수가 유니온 타입이라면?
+
+## TS스터디 25일차: 아이템 54~55
+
+### 아이템 54: DSL과 문자열의 관계를 모델링하기 위해 템플릿 리터럴 사용하기
+
+이전에 다룬 `string`과 관련된 내용
+
+세상에는 수많은 문자열이 존재하기 때문에 모든 경우를 고려하는 것이 불가능하다.
+
+그래서 TS는 문자열의 패턴과 관계를 다루는 템플릿 리터럴 타입이라는 고유한 기능을 제공한다.
+
+```ts
+type MedalColor = 'gold' | 'silver' | 'bronze';
+```
+
+유한한 문자열 집합을 모델링할 수 있음
+
+우리가 평소에 하던 느낌
+
+#### 템플릿 리터럴 타입은?
+
+```ts
+type PseudoString = `pseudo${string}`;
+```
+
+`pseudo`로 시작하는 모든 문자열을 모델링할 수 있음
+
+템플릿 리터럴 타입의 진가는 제네릭과 타입 추론을 조합해 타입 간 관계를 표현할 때 비로소 나타난다.
+
+DOM의 `querySelector` 함수에 대해 생각해보자.
+
+`HTMLElement`를 쿼리하면 구체적인 서브타입을 제시할 만큼 영리하지만, 그렇다고 그 이상으로 똑똑하지는 않다.
+
+특정 ID를 가지는 이미지를 쿼리하면 `Element` 타입을 얻게 된다. 너무 넓은 타입이다.
+
+그래서 `querySelector`에 대한 선언을 오버로딩해서 `tag#id` 형식을 추가할 수 있다.
+
+```ts
+type HTMLTag = keyof HTMLElementTagNameMap;
+
+declare global {
+  interface ParentNode {
+    querySelector<TagName extends HTMLTag>(
+      selectors: `${TagName}#${string}`,
+    ): HTMLElementTagNameMap[TagName] | null;
+  }
+}
+```
+
+```ts
+document.querySelector('img#spectacular-sunset');
+// const img: HTMLImageElement | null
+```
+
+그렇지만 아직 부족한 부분이 있다.
+
+CSS 선택기에서 빈칸은 ‘~의 자손’을 의미하는데, 위 오버로딩으로 인해 부정확한 타입을 얻게 된다.
+
+또 다른 오버로딩을 도입해서 특수한 의미를 가지는 문자를 보호하는 방법이 있다.
+
+이 내용은 진짜 이해가 안 되네. 너무 어렵다.
+
+### 아이템 55: 타입을 위한 테스트 작성하기
+
+타입 선언을 테스트하기는 매우 어렵다.
+
+> 타입 테스트는 “코드가 실행되는가?”가 아니라 “타입스크립트가 내가 의도한 타입으로 판단하는가?”를 검사하는 테스트다.
+
+#### 1. 타입 동일성과 할당 가능성은 다르다?
+
+두 타입이 정확히 같은지를 검사하는 것과, 한 타입의 값을 다른 타입 자리에 넣을 수 있는지를 검사하는 것은 다르다.
+
+```ts
+type A = 1;
+type B = number;
+```
+
+위의 두 타입은 다르지만 `A`는 `B`에 할당 가능하다.
+
+#### 2. 콜백 함수의 매개변수 타입도 검사해야 한다?
+
+```ts
+declare function processNumbers(
+  numbers: number[],
+  callback: (value: number, index: number) => void,
+): void;
+```
+
+위 함수의 반환 타입만 검사하는 것은 부족하다.
+
+`value`와 `index`가 `number`인지도 중요하기 때문에 아래와 같이 테스트를 진행해야 한다.
+
+```ts
+processNumbers([10, 20], (value, index) => {
+  expectTypeOf(value).toEqualTypeOf<number>();
+  expectTypeOf(index).toEqualTypeOf<number>();
+});
+```
+
+#### 3. `this`가 API에 포함되어 있다면 `this`도 테스트한다?
+
+...
