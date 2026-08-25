@@ -242,3 +242,88 @@ expectTypeOf(
 직접 만든 타입을 테스트하려면 vitest, expect-type, tsd 같은 라이브러리를 사용하는 것이 좋다.
 
 타입의 구조뿐 아니라 표시 형식까지 테스트하려면 eslint-plugin-expect-type을 사용하자.
+
+## 아이템 56
+
+```ts
+type T21 = '2' | '1';
+//   ^? type T21 = "2" | "1"
+
+type T123 = '1' | '2' | '3';
+//   ^? type T123 = "2" | "1" | "3"
+```
+일반적으로 요소가 나열된 순서대로 표시되지만, 겹치는 타입의 유니온은 다르게 표시된다.
+
+```ts
+interface BlogComment {
+  commentId: number;
+  title: string;
+  content: string;
+}
+
+type PartComment = PartiallyPartial<BlogComment, 'title'>;
+//   ^? type PartComment =
+//          Partial<Pick<BlogComment, "title">> &
+//          Omit<BlogComment, "title">
+```
+객체 형식으로 타입을 보여주지 않고, 구현을 보여준다 -> Resolve를 앞에 붙이면 객체 형식으로 타입을 보여준다.
+
+```ts
+type PartiallyPartial<T, K extends keyof T> =
+  Resolve<Partial<Pick<T, K>> & Omit<T, K>>;
+
+type PartComment = PartiallyPartial<BlogComment, 'title'>;
+//   ^? type PartComment = {
+//          title?: string | undefined;
+//          commentId: number;
+//          content: string;
+//      }
+```
+
+복잡하게 합성된 타입을 이해하기 쉽게 펼쳐서 보여주는 기능이라고 생각하면 된다.
+
+하지만 `Date`타입 같은 경우 내부 타입을 풀어서 보여주는 것은 불필요하기에 필요한 경우에만 사용하자
+
+## 아이템 57
+
+```ts
+function sum(nums: readonly number[]): number {
+  if (nums.length === 0) {
+    return 0;
+  }
+
+  return nums[0] + sum(nums.slice(1));
+}
+```
+배열 요소들의 합을 구하는 재귀 함수가 있다.
+
+```txt
+1 + sum([2, 3])
+1 + (2 + sum([3]))
+1 + (2 + (3 + sum([])))
+1 + (2 + (3 + 0))
+```
+이런 과정으로 계산되지만, 재귀 호출이 끝난 다음에 작업이 남아 있어 각 호출은 자기 상태를 기억해둬야 하고 콜 스택이 계속 쌓인다.
+
+너무 깊어지면 오버플로가 발생한다.
+
+-> **꼬리 재귀**를 사용해서 해결할 수 있다.
+
+### 꼬리 재귀
+
+```ts
+function sum(
+  nums: readonly number[],
+  acc = 0,
+): number {
+  if (nums.length === 0) {
+    return acc;
+  }
+
+  return sum(nums.slice(1), nums[0] + acc);
+}
+```
+
+꼬리 재귀는 재귀 호출 후에 할 일이 남아 있지 않다. 재귀 호출 자체가 마지막 작업이기 때문에 이전 함수 호출의 값을 유지하지 않아도 된다.
+
+이 개념을 타입스크립트에도 적용할 수 있다.
