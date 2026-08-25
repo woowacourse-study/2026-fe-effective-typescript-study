@@ -237,3 +237,41 @@ declare function map<U, V>(
 #### 부정적 테스트
 
 더 중요한 문제가 있다.
+
+## 아이템 56 타입이 표시되는 방식 관리하기
+
+타입이 표시되는 방식이 매우 중요하다.
+
+타입이 연산된 결과를 보여주게 만드는 것이 중요하다.
+
+그럼 이걸 어떻게 하냐?
+
+제네릭 타입을 Resolve라는 유틸리티 타입으로 감싸는 것만으로 모든 속성이 표시되게 할 수 있다.
+
+## 아이템 57 제네릭 타입 반복에는 꼬리 재귀 사용하기
+
+재귀 타입에서 재귀 호출의 결과를 받은 뒤 추가적인 타입 연산을 수행하면 TypeScript가 중간 결과들을 계속 유지해야 하므로 깊은 재귀에서 타입 인스턴스화 제한에 쉽게 도달할 수 있다.
+
+// 일반 재귀
+type GetChars<S extends string> =
+S extends `${infer First}${infer Rest}`
+? First | GetChars<Rest>
+: never;
+
+가능하다면 accumulator를 추가해서 지금까지 계산한 결과를 재귀 호출의 타입 매개변수로 전달한다.
+
+type ToSnake<
+S extends string,
+Acc extends string = ''
+
+> =
+> S extends `${infer First}${infer Rest}`
+
+    ? ToSnake<Rest, /* 새로운 Acc */>
+    : Acc;
+
+이렇게 재귀 호출 자체가 마지막 타입 연산이 되도록 만드는 것을 꼬리 재귀라고 한다. 꼬리 재귀 타입은 TypeScript가 더 효율적으로 처리할 수 있으며 더 깊은 재귀를 처리할 수 있다.
+
+한 문장으로 기억하면:
+
+재귀 결과를 나중에 조합하지 말고, 지금까지의 결과를 Acc에 들고 다음 재귀로 넘겨라.
