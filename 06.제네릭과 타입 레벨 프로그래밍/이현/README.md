@@ -148,3 +148,92 @@ type Comparable<T> = [T] extends [Date]
 
 > never | 무언가 -> never사라짐
 > 분배 조건부 타입 관점에서 never가 들어오면 얘는 멤버개수가 0인 유니온처럼 행동해서 결과가 never가 된다.
+
+## 아이템 54 DSL과 문자열의 관계를 모델링하기 위해 템플릿 리터럴 사용하기
+
+템플릿 리터럴 타입이라는 것이 존재한다.
+
+```ts
+type PseudoString = `pseudo${string}`;
+const science: PseudoString = "pseudoscience"; // ok
+const alias: PseudoString = "pseudonym"; // ok
+const physics: PseudoString = "physics";
+//    ~~~~~~~ Type '"physics"' is not assignable to type '`pseudo${string}`'.
+```
+
+이렇게 쓸 수 있음!
+특하 DOM에 데이터 붙이는 data- 속성이 여기에 종종 쓰인다.
+
+## 아이템 55 타입을 위한 테스트 작성하기
+
+반환 타입을 체크하는 것이 훨씬 좋은 테스트 코드이다.
+
+그럼 타입 테스트는 어떻게 해야될까?
+
+먼저 타입 테스트용 함수를 만들 수도 있다.
+
+```ts
+function assertType<T>(x: T) {}
+
+assertType<number[]>(map(["john", "paul"], (name) => name.length));
+```
+
+이러면 map이 반환하는게 number[]인지 확인할 수 있다.
+
+하지만 이 방식은 객체의 타입을 체크하는 경우 문제가 발생한다.
+
+```ts
+const beatles = ["john", "paul", "george", "ringo"];
+assertType<{ name: string }[]>(
+  map(beatles, (name) => ({
+    name,
+    inYellowSubmarine: name === "ringo",
+  })),
+); // OK
+```
+
+isYellowSubmarin 속성에 대한 체크는 행해지지 않는다.
+
+또한 객체뿐만 아니라 함수를 넣어도 이상해진다.
+
+실제 함수의 파라미터 개수와 달라도 assertType은 오류를 내지 않는다.
+
+함수를 쓸 때 더 제대로 assertType을 사용하기 위해서는 Parameters와 ReturnType 제네릭을 이용하는 방법이 있다.
+
+---
+
+여기에 심지어 this가 등장하는 콜백함수에도 문제가 있다.
+
+```ts
+const beatles = ["john", "paul", "george", "ringo"];
+assertType<number[]>(
+  map(beatles, function (name, i, array) {
+    // ~~~ Argument of type '(name: any, i: any, array: any) => any' is
+    //     not assignable to parameter of type '(u: string) => any'
+    assertType<string>(name);
+    assertType<number>(i);
+    assertType<string[]>(array);
+    assertType<string[]>(this);
+    //                   ~~~~ 'this' implicitly has type 'any'
+    return name.length;
+  }),
+);
+```
+
+우리는 콜백으로 받는 매개변수의 타입도 제대로 지정해줄 필요가 있다
+따라서 이렇게 assertType을 해주는 것이다.
+
+```ts
+declare function map<U, V>(
+  array: U[],
+  fn: (this: U[], u: U, i: number, array: U[]) => V,
+): V[];
+```
+
+이런식으로 this를 직접 지정해주면 해결된다.
+
+---
+
+#### 부정적 테스트
+
+더 중요한 문제가 있다.
