@@ -418,3 +418,48 @@ const bad: PseudoString = "science";
 마지막 게 은근히 중요하다. 타입이 논리적으로 맞아도 호버했을 때 `Pick<Omit<Foo, "a">, "b">`처럼 뜨면 쓰는 사람 입장에서는 모르는 타입이다. 결과가 맞는 것과 읽히는 건 다른 문제고, 공개 API라면 후자도 테스트 대상이다.
 
 ---
+
+### 아이템 56. 타입이 표시되는 방식 관리하기
+
+라이브러리 제작 시 타입이 에디터에 어떻게 찍히는지도 API 설계의 일부다.
+
+복잡한 제네릭 연산 체인은 추론 결과가 연산 과정 그대로 노출돼 가독성이 떨어진다.
+
+```ts
+type Resolve<T> = T extends Function ? T : { [K in keyof T]: T[K] };
+
+type Padding = { top: number; left: number };
+type Margin = { top: number; right: number };
+type Combined = Resolve<Padding & Margin>;
+// 감싸지 않으면 Padding & Margin 그대로 표시
+// 감싸면 { top: number; left: number; right: number } 로 평탄화되어 표시
+```
+
+Resolve 같은 매핑 타입으로 감싸면 교차 타입, 매핑 타입 체인 등의 연산 과정이 사라지고 최종 속성 목록만 보인다.
+
+단, 내부 구현이 안 보이게 되어 디버깅이 어려워질 수 있고, 실제로는 같은 타입인데 다르게 표시되어 혼란을 줄 수도 있으므로 공개 API 경계에서만 선택적으로 쓴다.
+
+---
+
+### 아이템 57. 제네릭 타입 반복에는 꼬리 재귀 사용하기
+
+재귀 호출 뒤에 결과를 다시 가공하는 형태는 컴파일러가 각 단계 결과를 스택에 계속 쌓아야 해서 깊은 재귀에서 인스턴스화 한도(약 대략 수백 단계 수준)에 쉽게 도달한다.
+
+```ts
+// 일반 재귀 - 호출 후에도 유니온 연산이 남아있음
+type Reverse<S extends string> = S extends `${infer First}${infer Rest}`
+  ? `${Reverse<Rest>}${First}`
+  : S;
+
+// 꼬리 재귀 - Acc에 누적하고 재귀 호출이 마지막 동작
+type ReverseTail
+  S extends string,
+  Acc extends string = ''
+> = S extends `${infer First}${infer Rest}`
+  ? ReverseTail<Rest, `${First}${Acc}`>
+  : Acc;
+```
+
+Reverse는 재귀 결과를 받아 First를 앞에 붙이는 연산이 남아있어 스택이 계속 쌓이지만, ReverseTail은 Acc에 이미 계산된 결과를 들고 다니다가 재귀 호출 자체로 끝나므로 TS가 이전 프레임을 버려도 된다.
+
+이 차이 덕분에 꼬리 재귀는 훨씬 긴 문자열이나 배열도 인스턴스화 한도 없이 처리할 수 있다.
