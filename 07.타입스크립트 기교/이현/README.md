@@ -65,3 +65,96 @@ const messages: Record<RequestStatus, string> = {
 ```
 
 이렇게 하면, 4가지 상태를 빼먹지 않을 수 있음!
+
+## 아이템 62 가변 함수 모델링을 위해 나머지 매개변수와 튜플 타입 사용하기
+
+함수의 한 인자에 따라 나머지 인자의 개수나 타입이 달라진다면 단순한 optional parameter로는 관계를 정확하게 표현하기 어렵다.
+
+이때 조건부 타입으로 tuple 타입을 선택하고 이를 rest parameter에 적용할 수 있다.
+
+```ts
+function buildURL<Path extends keyof RouteQueryParams>(
+  route: Path,
+  ...args: RouteQueryParams[Path] extends null
+    ? []
+    : [params: RouteQueryParams[Path]]
+) {}
+```
+
+[]는 추가 인자가 없음을, [params: T]는 타입 T의 인자가 하나 필요함을 의미한다.
+따라서 첫 번째 인자의 타입에 따라 함수의 나머지 인자 개수와 타입을 연결할 수 있다.
+
+결론은 인자가 2개이상 있는데, 첫 번째 인자에 따라서 나머지 매개변수들이 변한다면 튜플 타입 + rest를 사용하자!
+
+## 아이템 63 배타적 OR를 모델링하기 위해 선택적 never 속성 사용하기
+
+타입스크립트의 타입 레벨 OR는 "포함적 OR"이다. 이게 뭔소리임?
+
+```ts
+interface ThingOne {
+  shirtColor: string;
+}
+interface ThingTwo {
+  hairColor: string;
+}
+type Thing = ThingOne | ThingTwo;
+
+const bothThings = {
+  shirtColor: "red",
+  hairColor: "blue",
+};
+const thing1: ThingOne = bothThings; // ok
+const thing2: ThingTwo = bothThings; // ok
+```
+
+여기서는 타입 오류가 나지 않는다. 구조적 타이핑 때문이다.
+하지만 우리가 원하는 것은 thing1에는 shirtColor만 올 수 있게 하고, thing2에는 hairColor만 올 수 있게 하는것이다. (배타적 OR)
+
+표준적인 방법은 `선택적 never`타입을 추가하는 것이다.
+사실 더 좋은 방법은 태그된 유니온인데, 태그를 명시적으로 추가할 수 없거나 추가하고 싶지 않은 경우에는 선택적 never를 쓰면 된다.
+
+```ts
+interface OnlyThingOne {
+  shirtColor: string;
+  hairColor?: never;
+}
+interface OnlyThingTwo {
+  hairColor: string;
+  shirtColor?: never;
+}
+```
+
+## 아이템 64 공식 명칭에는 상표 붙이기
+
+태그된 유니온 대신 상표(brand)라는게 있다.
+
+태그된 유니온은 1개의 값이 여러개의 상태가 될 수 있을 때 유용하다.
+하지만 상표는 런타임에서는 사실상 동일한데, 타입 수준에서만 의미적으로 구분하고 싶을 때 주로 사용한다.
+
+meter, seconds 같은 것도 사실상 다 같은 number인데 TS적으로만 구분을 할 수 있다.
+
+이를 구분하는 방법은 불가능한 타입을 선언해놓고, 이를 타입가드를 이용해서 좁히고 난 다음에 사용하는 방식이다.
+
+일반적으로는 타입이 number & { \_brand: 'meters' }; 이걸로 될 수 없으니까 타입가드를 이용해서 검증을 한 단계 거친다는 말이다.
+
+```ts
+string
+// 그냥 문자열
+
+Email
+// 이메일임이 보장된 문자열
+
+T[]
+// 그냥 배열
+
+SortedList<T>
+// 정렬됨이 보장된 배열
+
+string
+// 그냥 문자열
+
+AbsolutePath
+// 절대 경로임이 보장된 문자열
+```
+
+이렇게 의미적으로 좁히는 것이다.
