@@ -79,3 +79,92 @@ API에 주석을 달아야한다면 //(인라인)으로 달지말고 /\*\* \*/ �
 다만 타입 정보를 주석에 달지는 말아라.
 
 폐기되었다면 @deprecated를 달아라
+
+## 아이템 69 콜백 함수에서 this에 대한 타입 제공하기
+
+js에서 this가 원래 어떻게 동작하는지부터 알아보자
+
+함수가 어디에 있냐보다, 어떻게 호출했냐가 더 중요하다. -> this를 사용하는 메서드 자체가 어디서 호출되었는지가 더 중요한거임
+
+그래서 this를 사용하는 메서드를 호출했는데, 인스턴스가 없다? (다른 변수에 담겨서 사용되는 경우 등)
+그러면 this가 undefined가 되는 것이다.
+
+그래서 JS는 .call()이라는 프로토타입 레벨의 메서드를 지원한다.
+call의 인자로 들어간 애는 해당 함수의 this가 된다. `method.call(c)` -> 이런식으로
+
+```ts
+class ResetButton {
+  render() {
+    return makeButton({
+      text: "Reset",
+      onClick: this.onClick,
+    });
+  }
+
+  onClick() {
+    alert(`Reset ${this}`);
+  }
+}
+```
+
+이 예제를 한번 보자.
+onClick에 this.onClick이 있다. 그래서 나중에 ResetButton이 makeButton하고 onClick하면 잘 될 것 같지만, 실제로는 그렇지 않다.
+this.onClick을 전달한게 아니라, onClick함수 자체를 전달한 것이기 때문이다.
+
+여기서는 해결책을 2가지 제시한다.
+
+방법1. bind 메서드를 사용하는 것
+
+`onClick: this.onClick.bind(this)` 이렇게 하면, 해당 함수가 나중에 어디서 호출되더라도 this를 지금의 this로 고정한다.
+따라서 문제가 해결된다.
+
+방법2. 화살표 함수를 사용하는 것
+
+```ts
+class ResetButton {
+  onClick = () => {
+    alert(`Reset ${this}`);
+  };
+}
+```
+
+화살표 함수에는 자기 자신의 동적인 this가 존재하지 않는다. 대신에 자신이 `만들어진` 바깥쪽 this를 그대로 사용한다.
+
+따라서 자연스레 ResetButton이 this가 되는 것이다.
+
+이걸 TS에서는 아래와 같이 사용할 수 있다.
+
+```ts
+function addKeyListener(
+  el: HTMLElement,
+  listener: (this: HTMLElement, e: KeyboardEvent) => void,
+) {
+  el.addEventListener("keydown", (e) => listener.call(el, e));
+}
+```
+
+이렇게 listener의 인자로 this의 타입을 정해놓는 것이다.
+그리고 그걸로 this바인딩을 해주는 패턴이다.
+
+이게 바로 this에 어떤 것이 와야하는지 정해주는 TS에서만 가능한 패턴이다.
+
+> 레벨1 미션에서 이 문제를 실제로 겪어봐서 더 체감된다. 그때도 화살표 함수로 전부 바꿨던 경험이 있다.
+
+## 아이템 70 의존성 분리를 위해 미러 타입 사용하기
+
+내 함수가 외부 라이브러리 타입의 아주 작은 일부만 필요하다면,
+그 외부 타입을 공개 API에 그대로 노출하지 말고 필요한 구조만 직접 타입으로 만들어서 의존성을 끊어라.
+
+Node.js의 Buffer라는 친구를 사용하고 싶음. 근데 내가 실제로 사용하는 것은 Buffer의 수만은 메서드중 하나의 메서드뿐이다.
+그런데 어떤 메서드의 인자로 Buffer type이 와야된다고 해놓으면, 문제가 발생한다.
+
+바로 @types/node를 설치하고 Buffer type을 가져와야 하는 것이다.
+
+근데 이 의존성은 겁나 길고, Buffer 내용도 너무 많아서 낭비가 훨씬 심한 의존성이 될 수 있다.
+따라서 TS에서는 구조적 타이핑을 이용해서 Buffer도 들어올 수 있도록 인자를 좁히면 된다. (내가 직접 Buffer와 호환되는 인터페이스를 1개 만들라는 것이다.)
+
+Buffer도 들어올 수 있는 커스텀 타입을 만드는 것을 바로 Mirror Type이라고 하는 것 같다.
+구조적 타이핑을 이용한 인터페이스 설계이다.
+
+다만 주의할점은 Buffer안에 있는 메서드를 모두 사용한다? 그러면 @types/node를 받는 것이 나을 수도 있다.
+어디까지나 mirror type을 만드는 것은 외부 라이브러리의 극히 일부 타입만 사용할 때이다.
