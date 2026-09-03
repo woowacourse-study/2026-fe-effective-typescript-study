@@ -272,3 +272,119 @@ JSDoc에는 타입 정보를 적는 문법이 있다.
 주석은 타입이 말하지 못하는 것만 담당하면 된다. 무엇을 하는 함수인지, 어떤 전제가 있는지, 값의 단위와 범위는 무엇인지 같은 것들이다.
 
 -> 편집기가 보여주는 주석은 `/** */` 형태뿐이다. 공개 API에는 TSDoc으로 요점만 적고, 타입은 주석이 아니라 코드에 맡기자.
+
+### 아이템 69. 콜백 함수에서 this에 대한 타입 제공하기
+
+#### this는 호출 방식이 결정한다
+
+`let`, `const`는 렉시컬 스코프라 작성된 위치만 보면 값을 알 수 있다.
+`this`는 다이내믹 스코프라 **호출하는 쪽**을 봐야 안다.
+
+```ts
+class C {
+  vals = [1, 2, 3];
+  logSquares() {
+    for (const val of this.vals) console.log(val ** 2);
+  }
+}
+
+const c = new C();
+c.logSquares(); // 1 4 9
+
+const method = c.logSquares;
+method(); // TypeError: Cannot read properties of undefined
+```
+
+`c.logSquares()`는 사실 두 가지 일을 한다. 메서드를 호출하고, `c`를 `this`로 바인딩한다. 참조만 떼어내면 두 번째가 사라진다.
+메서드는 객체에 소속된 게 아니라 그냥 프로퍼티에 담긴 함수이기 때문이다. `call`/`apply`/`bind`는 이 두 번째 일을 수동으로 시키는 장치다.
+
+#### 콜백으로 넘길 때 터진다
+
+```ts
+class ResetButton {
+  render() {
+    return makeButton({ text: "Reset", onClick: this.onClick }); // this가 사라짐
+  }
+  onClick() {
+    alert(`Reset ${this}`);
+  }
+}
+```
+
+`this.`는 함수를 꺼내오는 경로일 뿐이고, 넘어가는 값은 함수 그 자체다. 해결책은 두 가지이다.
+
+```ts
+// 1. 생성자에서 bind -> this가 고정된 새 함수로 덮어쓴다
+constructor() { this.onClick = this.onClick.bind(this); }
+
+// 2. 화살표 함수 프로퍼티 -> 자기 this가 없어 바깥(인스턴스) this를 쓴다
+onClick = () => { alert(`Reset ${this}`); };
+```
+
+둘 다 함수가 프로토타입이 아닌 인스턴스마다 생긴다는 대가는 있다.
+
+TS의 this 바인딩은 JS와 동일하다. TS가 추가로 주는 건 **this에 무엇이 와야 하는지를 타입으로 못 박는 기능**이다. 첫 번째 매개변수 자리의 `this`는 실제 인자가 아니라 컴파일 타임 전용 표식이다.
+
+```ts
+function addKeyListener(
+  el: HTMLElement,
+  listener: (this: HTMLElement, e: KeyboardEvent) => void,
+) {
+  el.addEventListener("keydown", (e) => listener.call(el, e));
+}
+```
+
+이득이 양방향이다.
+구현 쪽에서는 `listener(e)`처럼 this 없이 호출하면 에러가 나고, 사용하는 쪽에서는 잘못된 this가 잡힌다.
+
+```ts
+class Foo {
+  registerHandler(el: HTMLElement) {
+    addKeyListener(el, (e) => {
+      this.innerHTML; // ~~~~~~~~~ 'Foo'에 'innerHTML' 속성이 없습니다
+    });
+  }
+}
+```
+
+화살표 함수 안의 `this`는 `Foo`인데 콜백은 `HTMLElement`를 기대하므로, 런타임에 터질 코드가 컴파일 단계에서 걸린다. (`noImplicitThis`가 전제)
+
+-> 메서드 참조를 떼어내면 바인딩이 사라진다. 콜백으로 넘길 때는 `bind`나 화살표 함수로 고정하고, 콜백 타입에 `this`가 쓰인다면 `this` 매개변수로 명시한다. 애초에 콜백이 `this`를 쓰지 않게 설계하는 것이 가장 좋다.
+
+---
+
+### 아이템 70. 의존성 분리를 위해 미러 타입 사용하기
+
+#### 타입 하나 때문에 딸려오는 의존성
+
+```ts
+function parseCSV(contents: string | Buffer) {
+  /* ... */
+}
+```
+
+`Buffer` 때문에 `@types/node`가 필요해지고, 라이브러리로 공개하면 이게 **사용자에게 전파되는 의존성**이 된다. 근데 단점이 있다.
+
+- JS로 쓰는 사람: `@types` 자체가 필요 없다
+- 브라우저 TS 개발자: Node 타입이 필요 없다
+- Node TS 개발자: 이미 갖고 있다
+
+셋 중 둘에게는 낭비다. `Buffer` 타입 정의는 방대한데 실제로 쓰는 건 `toString` 하나뿐이다.
+
+TS는 구조적 타이핑을 쓰므로, 쓰는 메서드만 가진 인터페이스를 직접 선언하면 진짜 `Buffer`도 그대로 통과한다.
+
+```ts
+interface CsvBuffer {
+  toString(encoding?: string): string;
+}
+
+function parseCSV(contents: string | CsvBuffer) {
+  /* ... */
+}
+```
+
+이렇게 외부 타입에서 실제로 쓰는 부분만 흉내 낸 타입이 **미러 타입**이다.
+
+#### 트레이드오프
+
+미러 타입은 원본과 연결이 끊긴 복사본이라, 원본이 바뀌어도 컴파일러가 알려주지 않는다. 실제 `Buffer`를 넣어보는 단위 테스트로 확인해야 한다. 그리고 복제량이 많아지면 그건 신호이다. 그때는 정식 의존성을 추가하는 편이 낫다. **라이브러리를 공개할 때**는 필수가 아닌 타입 의존성을 끊을 가치가 크고, **애플리케이션 코드**에서는 의존성이 이미 있으니 그냥 원본 타입을 쓰면 된다.
